@@ -1,0 +1,275 @@
+/* Keep custom CSS minimal and let Bootstrap do the styling. */
+
+.app-sidebar {
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
+
+#preview-canvas {
+  width: 100%;
+  height: auto;
+}
+
+/* Modal: linear zoom-in/out, 400ms */
+.modal.modal-zoom .modal-dialog {
+  transform: scale(0.2);
+  transition: transform 300ms linear;
+}
+
+.modal.modal-zoom.show .modal-dialog {
+  transform: scale(1);
+}
+
+.modal.modal-zoom .modal-content {
+  max-height: calc(100vh - 3rem);
+}
+
+/* Panels (left/middle/right) */
+.app-panels {
+  display: flex;
+  height: calc(100vh - 57px);
+}
+
+.panel {
+  border-radius: 0;
+  border-top: 0;
+  border-bottom: 0;
+  flex: 0 0 auto;
+  min-width: 220px;
+}
+
+.panel-left {
+  flex-basis: 280px;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.panel-middle {
+  flex: 1 1 auto;
+  min-width: 320px;
+}
+
+.panel-right {
+  flex-basis: 360px;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.panel-scroll {
+  overflow: auto;
+}
+
+/* Custom scrollbars */
+.panel-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.panel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+}
+.panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.panel-resizer {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background-color: var(--bs-border-color);
+  opacity: 0.25;
+  transition: background-color 180ms ease, opacity 180ms ease;
+}
+
+.panel-resizer:hover {
+  opacity: 0.45;
+  background-color: rgba(var(--bs-primary-rgb), 0.55);
+}
+
+.panel-resizer.is-dragging {
+  opacity: 0.65;
+  background-color: rgba(var(--bs-primary-rgb), 0.75);
+}
+
+.panel-resizer-y {
+  flex: 0 0 5px;
+  cursor: row-resize;
+}
+
+.preview-click {
+  cursor: pointer;
+}
+
+/* Preview drag/drop feedback */
+#preview-area.is-dragover {
+  background: rgba(var(--bs-primary-rgb), 0.08);
+}
+
+/* Dropdown menus */
+.dropdown-menu {
+  box-shadow: var(--bs-box-shadow);
+}
+
+/* Effects badges */
+#effects-list .badge {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+#effects-list .mb-badge-toggle:hover {
+  filter: brightness(1.12);
+}
+
+/* Pixel coordinate readout */
+#pixel-info {
+  font-family: "Inconsolata", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
+
+#zoom-level {
+  font-family: "Inconsolata", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  display: inline-block;
+  width: 6ch;
+  text-align: right;
+}
+
+/* Menubar active highlighting */
+.menubar-btn.active,
+.menubar-btn:focus-visible {
+  background: rgba(var(--bs-primary-rgb), 0.12);
+  border-radius: 0.25rem;
+}
+
+.menubar-btn {
+  transition: none !important;
+}
+
+/* Modal typography + compact chrome */
+.modal-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bs-secondary-color);
+}
+
+.modal-header,
+.modal-footer {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.modal-header .btn-close {
+  padding: 0.5rem;
+  margin: -0.25rem -0.25rem -0.25rem auto;
+}
+
+/* Center empty preview prompt */
+#preview-area {
+  position: relative;
+  background-color: var(--bs-body-bg);
+  background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255, 255, 255, 0.06) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255, 255, 255, 0.06) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255, 255, 255, 0.06) 75%);
+  background-size: 24px 24px;
+  background-position: 0 0, 0 12px, 12px -12px, -12px 0px;
+}
+
+#preview-area #empty-state {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+#preview-area #empty-state i {
+  margin-bottom: 0.25rem !important;
+}
+
+/* Preview canvas zoom sizing */
+#preview-canvas {
+  display: block;
+  margin: 0 auto;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.55);
+  cursor: crosshair;
+  background: transparent;
+}
+
+#canvas-wrap {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#preview-area.is-spacepan {
+  cursor: grab;
+}
+
+.color-hover-indicator {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+}
+
+/* Custom color picker popover */
+.color-popover {
+  position: absolute;
+  z-index: 1080;
+  width: 260px;
+  user-select: none;
+}
+
+.color-popover .color-sv {
+  width: 100%;
+  height: 160px;
+  display: block;
+  border-radius: 0.375rem;
+}
+
+.color-popover .color-hue {
+  width: 100%;
+  height: 14px;
+  display: block;
+  border-radius: 999px;
+}
+
+.color-split .btn:first-child {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.color-split .btn:last-child {
+  border-top-right-radius: 0.5rem !important;
+  border-bottom-right-radius: 0.5rem !important;
+}
+
+#preview-canvas.is-panning {
+  cursor: grabbing;
+}
+
+.undo-panel {
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 180px;
+  overflow: hidden;
+}
+
+.undo-panel .panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#undo-list {
+  flex: 1 1 auto;
+}
