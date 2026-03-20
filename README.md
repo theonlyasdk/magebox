@@ -11,9 +11,54 @@ Go to https://theonlyasdk.github.io/magebox to use the app for free!
 2. Export a default object with:
    - `id`, `name`, `icon`, `description`
    - `defaultParams`
-   - `controls` (slider definitions)
-   - `getFilter(params)` (returns a Canvas `ctx.filter` segment or `null`)
+   - `controls` (range/select/color definitions)
+   - `gl` with `passes(params, context)` returning shader passes
 3. Import and register it in `assets/js/effects/registry.js`.
+
+### WebGL effect contract
+
+Effects now run through the shared WebGL pipeline in `assets/js/gl/webgl-renderer.js`.
+
+Use `assets/js/gl/effect-api.js`:
+
+```js
+import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { fragmentShaderSource } from "../gl/shader-chunks.js";
+
+const FRAGMENT = fragmentShaderSource(
+  "uniform float u_amount;",
+  `
+  vec4 color = sampleLinear(v_uv);
+  gl_FragColor = vec4(color.rgb * u_amount, color.a);
+`,
+);
+
+export default defineGpuEffect({
+  id: "example",
+  name: "Example",
+  icon: "bi-stars",
+  description: "Example GPU effect.",
+  controls: [{ key: "amount", label: "Amount", type: "range", min: 0, max: 2, step: 0.1 }],
+  defaultParams: { amount: 1 },
+  gl: {
+    isNeutral(params) {
+      return Number(params.amount ?? 1) === 1;
+    },
+    passes(params) {
+      return [pass(FRAGMENT, { u_amount: Number(params.amount ?? 1) })];
+    },
+  },
+});
+```
+
+The renderer injects:
+- `u_texture`
+- `u_inputSize`
+- `u_outputSize`
+- `u_texelSize`
+- `v_uv`
+
+Common GLSL helpers live in `assets/js/gl/shader-chunks.js`.
 
 ## License
 Licensed under the [Mozilla Public License Version 2](LICENSE)

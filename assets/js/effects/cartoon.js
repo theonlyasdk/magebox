@@ -1,8 +1,29 @@
-function clamp(v, min, max) {
-  return Math.min(max, Math.max(min, v));
-}
+import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
-export default {
+const CARTOON_FRAGMENT = fragmentShaderSource(
+  "uniform float u_levels; uniform float u_edges; uniform float u_threshold;",
+  `
+  vec4 color = sampleLinear(v_uv);
+  vec3 quantized = floor(color.rgb * max(u_levels - 1.0, 1.0) + 0.5) / max(u_levels - 1.0, 1.0);
+  vec2 t = u_texelSize;
+  float tl = luminance(sampleLinear(v_uv + vec2(-t.x, -t.y)).rgb);
+  float tc = luminance(sampleLinear(v_uv + vec2(0.0, -t.y)).rgb);
+  float tr = luminance(sampleLinear(v_uv + vec2(t.x, -t.y)).rgb);
+  float ml = luminance(sampleLinear(v_uv + vec2(-t.x, 0.0)).rgb);
+  float mr = luminance(sampleLinear(v_uv + vec2(t.x, 0.0)).rgb);
+  float bl = luminance(sampleLinear(v_uv + vec2(-t.x, t.y)).rgb);
+  float bc = luminance(sampleLinear(v_uv + vec2(0.0, t.y)).rgb);
+  float br = luminance(sampleLinear(v_uv + vec2(t.x, t.y)).rgb);
+  float gx = -tl + tr - 2.0 * ml + 2.0 * mr - bl + br;
+  float gy = -tl - 2.0 * tc - tr + bl + 2.0 * bc + br;
+  float mag = clamp(length(vec2(gx, gy)), 0.0, 1.0);
+  float edge = smoothstep(u_threshold, 1.0, mag) * u_edges;
+  gl_FragColor = vec4(quantized * (1.0 - edge), color.a);
+`,
+);
+
+export default defineGpuEffect({
   id: "cartoon",
   name: "Cartoon",
   icon: "bi-magic",
@@ -13,59 +34,15 @@ export default {
     { key: "threshold", label: "Edge threshold", type: "range", min: 0, max: 255, step: 1 },
   ],
   defaultParams: { levels: 6, edges: 60, threshold: 50 },
-  applyImageData(imageData, width, height, params) {
-    const levels = clamp(Number(params.levels ?? 6), 2, 32);
-    const edgeStrength = clamp(Number(params.edges ?? 0) / 100, 0, 1);
-    const threshold = clamp(Number(params.threshold ?? 50), 0, 255);
-
-    const src = new Uint8ClampedArray(imageData.data);
-    const dst = imageData.data;
-    const step = 255 / (levels - 1);
-    const idx = (x, y) => (y * width + x) * 4;
-
-    const lumAt = (x, y) => {
-      const i = idx(x, y);
-      return 0.299 * src[i] + 0.587 * src[i + 1] + 0.114 * src[i + 2];
-    };
-
-    // Posterize colors
-    for (let i = 0; i < dst.length; i += 4) {
-      dst[i] = Math.round(src[i] / step) * step;
-      dst[i + 1] = Math.round(src[i + 1] / step) * step;
-      dst[i + 2] = Math.round(src[i + 2] / step) * step;
-      dst[i + 3] = src[i + 3];
-    }
-
-    if (edgeStrength <= 0) return imageData;
-
-    // Edge overlay (black lines)
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        const gx =
-          -1 * lumAt(x - 1, y - 1) +
-          1 * lumAt(x + 1, y - 1) +
-          -2 * lumAt(x - 1, y) +
-          2 * lumAt(x + 1, y) +
-          -1 * lumAt(x - 1, y + 1) +
-          1 * lumAt(x + 1, y + 1);
-        const gy =
-          -1 * lumAt(x - 1, y - 1) +
-          -2 * lumAt(x, y - 1) +
-          -1 * lumAt(x + 1, y - 1) +
-          1 * lumAt(x - 1, y + 1) +
-          2 * lumAt(x, y + 1) +
-          1 * lumAt(x + 1, y + 1);
-        const mag = Math.min(255, Math.sqrt(gx * gx + gy * gy));
-        if (mag < threshold) continue;
-        const t = edgeStrength * (mag / 255);
-        const i = idx(x, y);
-        dst[i] = clamp(dst[i] * (1 - t), 0, 255);
-        dst[i + 1] = clamp(dst[i + 1] * (1 - t), 0, 255);
-        dst[i + 2] = clamp(dst[i + 2] * (1 - t), 0, 255);
-      }
-    }
-
-    return imageData;
+  gl: {
+    passes(params) {
+      return [
+        pass(CARTOON_FRAGMENT, {
+          u_levels: Math.max(2, Number(params.levels ?? 6)),
+          u_edges: Math.min(1, Math.max(0, Number(params.edges ?? 0) / 100)),
+          u_threshold: Math.min(1, Math.max(0, Number(params.threshold ?? 50) / 255)),
+        }),
+      ];
+    },
   },
-};
-
+});

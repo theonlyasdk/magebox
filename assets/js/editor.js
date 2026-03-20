@@ -1,4 +1,5 @@
 import { EffectRegistry } from "./effects/registry.js";
+import { WebGLRenderer } from "./gl/webgl-renderer.js";
 import { clampNumber, lerp } from "./utils/math.js";
 import { rgbToHex } from "./utils/color.js";
 import { Settings } from "./utils/settings.js";
@@ -53,6 +54,7 @@ const elements = {
   ipOutW: document.getElementById("ip-out-w"),
   ipOutH: document.getElementById("ip-out-h"),
   ipLockAspect: document.getElementById("ip-lock-aspect"),
+  ipSizePreset: document.getElementById("ip-size-preset"),
 
   presetsModalEl: document.getElementById("presets-modal"),
   presetsModalTitle: document.getElementById("presets-modal-title"),
@@ -100,6 +102,15 @@ const state = {
 const STORAGE_KEY = "magebox:lastImage:v1";
 const PRESETS_KEY = "magebox:presets:v1";
 const AUTOSAVE_KEY = "magebox:effectsAutosave:v1";
+const PAN_SENSITIVITY = 0.4;
+const ZOOM_SENSITIVITY = 0.012;
+let gpuRenderer = null;
+
+try {
+  gpuRenderer = new WebGLRenderer();
+} catch (error) {
+  console.warn("WebGL renderer unavailable, falling back to CPU pipeline.", error);
+}
 
 function persistSettings() {
   Settings.save({
@@ -241,6 +252,14 @@ const Undo = (() => {
 
 function getEnabledEffects() {
   return EffectRegistry.filter((effect) => state.effects[effect.id]?.enabled);
+}
+
+function getEnabledEffectEntries() {
+  return EffectRegistry.map((effect) => ({
+    effect,
+    enabled: Boolean(state.effects[effect.id]?.enabled),
+    params: state.effects[effect.id]?.params ?? {},
+  })).filter((entry) => entry.enabled);
 }
 
 function buildFilterString() {
@@ -471,6 +490,23 @@ function drawToCanvas(
   }
   targetCanvas.width = w;
   targetCanvas.height = h;
+
+  if (gpuRenderer) {
+    gpuRenderer.renderToCanvas({
+      image: state.image,
+      effects: getEnabledEffectEntries(),
+      width: w,
+      height: h,
+      previewSampling: state.settings.sampling,
+      interpolation: state.settings.sampling === "nearest" ? "nearest" : "bilinear",
+      targetCanvas,
+    });
+    if (targetCanvas === elements.canvas) {
+      targetCanvas.style.imageRendering = state.settings.sampling === "nearest" ? "pixelated" : "auto";
+      applyZoomStyles();
+    }
+    return;
+  }
 
   const ctx = targetCanvas.getContext("2d");
   ctx.clearRect(0, 0, w, h);
@@ -829,32 +865,44 @@ async function downloadImage() {
   const outH = Number(state.settings.output.height ?? state.image.naturalHeight);
   const canvas = createCanvas(outW, outH);
 
-  const needResize = outW !== state.image.naturalWidth || outH !== state.image.naturalHeight;
-  if (needResize) {
-    const srcData = getImageDataFromImage(state.image);
-    const method = state.settings.interpolation || "lanczos3";
-    let resized = resampleImageData(srcData, canvas.width, canvas.height, method);
-    if (method === "bicubicSharper") resized = applyUnsharpMask(resized, 0.35);
-
-    const base = createCanvas(canvas.width, canvas.height);
-    base.getContext("2d").putImageData(resized, 0, 0);
-
-    const ctx = canvas.getContext("2d");
-    ctx.filter = buildFilterString();
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(base, 0, 0);
-    ctx.filter = "none";
-    applyPixelEffects(ctx, canvas.width, canvas.height);
+  if (gpuRenderer) {
+    gpuRenderer.renderToCanvas({
+      image: state.image,
+      effects: getEnabledEffectEntries(),
+      width: outW,
+      height: outH,
+      previewSampling: "linear",
+      interpolation: state.settings.interpolation || "bilinear",
+      targetCanvas: canvas,
+    });
   } else {
-    // No resize; use native draw + filters.
-    const ctx = canvas.getContext("2d");
-    ctx.filter = buildFilterString();
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(state.image, 0, 0, canvas.width, canvas.height);
-    ctx.filter = "none";
-    applyPixelEffects(ctx, canvas.width, canvas.height);
+
+    const needResize = outW !== state.image.naturalWidth || outH !== state.image.naturalHeight;
+    if (needResize) {
+      const srcData = getImageDataFromImage(state.image);
+      const method = state.settings.interpolation || "lanczos3";
+      let resized = resampleImageData(srcData, canvas.width, canvas.height, method);
+      if (method === "bicubicSharper") resized = applyUnsharpMask(resized, 0.35);
+
+      const base = createCanvas(canvas.width, canvas.height);
+      base.getContext("2d").putImageData(resized, 0, 0);
+
+      const ctx = canvas.getContext("2d");
+      ctx.filter = buildFilterString();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(base, 0, 0);
+      ctx.filter = "none";
+      applyPixelEffects(ctx, canvas.width, canvas.height);
+    } else {
+      const ctx = canvas.getContext("2d");
+      ctx.filter = buildFilterString();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(state.image, 0, 0, canvas.width, canvas.height);
+      ctx.filter = "none";
+      applyPixelEffects(ctx, canvas.width, canvas.height);
+    }
   }
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
@@ -920,6 +968,7 @@ function syncImagePropsUi() {
   elements.ipOutW.value = String(state.settings.output.width ?? "");
   elements.ipOutH.value = String(state.settings.output.height ?? "");
   elements.ipLockAspect.checked = Boolean(state.settings.output.lockAspect);
+  if (elements.ipSizePreset) elements.ipSizePreset.value = "";
 
 }
 
@@ -1567,8 +1616,8 @@ function initPanning() {
     if (active) {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      state.view.panX = startPanX + dx;
-      state.view.panY = startPanY + dy;
+      state.view.panX = startPanX + dx * PAN_SENSITIVITY;
+      state.view.panY = startPanY + dy * PAN_SENSITIVITY;
       applyZoomStyles();
       return;
     }
@@ -1577,8 +1626,8 @@ function initPanning() {
       if (lastMoveX !== 0 || lastMoveY !== 0) {
         const dx = e.clientX - lastMoveX;
         const dy = e.clientY - lastMoveY;
-        state.view.panX += dx;
-        state.view.panY += dy;
+        state.view.panX += dx * PAN_SENSITIVITY;
+        state.view.panY += dy * PAN_SENSITIVITY;
         applyZoomStyles();
       }
       lastMoveX = e.clientX;
@@ -1715,25 +1764,34 @@ function initWheelZoom() {
       if (!state.image) return;
       e.preventDefault();
 
-      const rect = canvas.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const mx = e.clientX;
-      const my = e.clientY;
-      const dx = mx - cx;
-      const dy = my - cy;
+      // Touchpad support:
+      // - Two-finger pan => wheel with ctrlKey=false.
+      // - Pinch zoom (most browsers) => wheel with ctrlKey=true.
+      if (e.ctrlKey || e.metaKey) {
+        const rect = canvas.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const mx = e.clientX;
+        const my = e.clientY;
+        const dx = mx - cx;
+        const dy = my - cy;
 
-      const current = state.view.zoomFactor;
-      const direction = e.deltaY > 0 ? -1 : 1;
-      const factor = Math.pow(1.12, direction);
-      const next = clampNumber(current * factor, 0.01, 30);
+        const current = state.view.zoomFactor;
+        // Lower sensitivity for pinch zoom (trackpads can emit large deltaY values).
+        const factor = Math.exp(-e.deltaY * ZOOM_SENSITIVITY);
+        const next = clampNumber(current * factor, 0.01, 30);
 
-      // Keep the point under the cursor stable by adjusting pan.
-      const scale = next / current;
-      state.view.panX = state.view.panX + dx * (1 - scale);
-      state.view.panY = state.view.panY + dy * (1 - scale);
-      state.view.zoomFactor = next;
-      applyZoomStyles();
+        const scale = next / current;
+        state.view.panX = state.view.panX + dx * (1 - scale);
+        state.view.panY = state.view.panY + dy * (1 - scale);
+        state.view.zoomFactor = next;
+        applyZoomStyles();
+      } else {
+        // Invert wheel deltas to match "grab and move" panning behavior.
+        state.view.panX -= e.deltaX * PAN_SENSITIVITY;
+        state.view.panY -= e.deltaY * PAN_SENSITIVITY;
+        applyZoomStyles();
+      }
     },
     { passive: false },
   );
@@ -1836,26 +1894,38 @@ elements.ipOutW?.addEventListener("change", () => Undo.push("Resize"));
 elements.ipOutH?.addEventListener("change", () => Undo.push("Resize"));
 elements.ipLockAspect?.addEventListener("change", () => Undo.push("Resize"));
 
-// Image size presets
-document.querySelectorAll("[data-size-preset]").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    if (!state.image) return;
-    const v = btn.getAttribute("data-size-preset");
-    const naturalW = state.image.naturalWidth;
-    const naturalH = state.image.naturalHeight;
-    if (v === "orig") {
-      state.settings.output.width = naturalW;
-      state.settings.output.height = naturalH;
-    } else {
-      const factor = clampNumber(Number(v), 0.01, 100);
-      state.settings.output.width = Math.max(1, Math.round(naturalW * factor));
-      state.settings.output.height = Math.max(1, Math.round(naturalH * factor));
+elements.ipSizePreset?.addEventListener("change", () => {
+  if (!state.image) return;
+  const v = String(elements.ipSizePreset.value || "");
+  const naturalW = state.image.naturalWidth;
+  const naturalH = state.image.naturalHeight;
+
+  let nextW = state.settings.output.width ?? naturalW;
+  let nextH = state.settings.output.height ?? naturalH;
+
+  if (v === "orig") {
+    nextW = naturalW;
+    nextH = naturalH;
+  } else if (v.startsWith("scale:")) {
+    const factor = clampNumber(Number(v.slice("scale:".length)), 0.01, 100);
+    nextW = Math.max(1, Math.round(naturalW * factor));
+    nextH = Math.max(1, Math.round(naturalH * factor));
+  } else if (/^\d+x\d+$/.test(v)) {
+    const [w, h] = v.split("x").map((n) => Number(n));
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      nextW = Math.round(w);
+      nextH = Math.round(h);
     }
-    if (elements.ipOutW) elements.ipOutW.value = String(state.settings.output.width);
-    if (elements.ipOutH) elements.ipOutH.value = String(state.settings.output.height);
-    persistSettings();
-    Undo.push("Resize");
-  });
+  } else {
+    return;
+  }
+
+  state.settings.output.width = nextW;
+  state.settings.output.height = nextH;
+  if (elements.ipOutW) elements.ipOutW.value = String(nextW);
+  if (elements.ipOutH) elements.ipOutH.value = String(nextH);
+  persistSettings();
+  Undo.push("Resize");
 });
 
 initResizablePanels();

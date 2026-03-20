@@ -268,12 +268,28 @@
                   </div>
                 </div>
                 <div class="mt-2 d-flex flex-wrap gap-2 align-items-center">
-                  <span class="text-body-secondary small">Presets:</span>
-                  <button class="btn btn-outline-secondary btn-sm py-0" type="button" data-size-preset="0.25">25%</button>
-                  <button class="btn btn-outline-secondary btn-sm py-0" type="button" data-size-preset="0.5">50%</button>
-                  <button class="btn btn-outline-secondary btn-sm py-0" type="button" data-size-preset="1">100%</button>
-                  <button class="btn btn-outline-secondary btn-sm py-0" type="button" data-size-preset="2">200%</button>
-                  <button class="btn btn-outline-secondary btn-sm py-0" type="button" data-size-preset="orig">Original</button>
+                  <label class="form-label small text-body-secondary m-0" for="ip-size-preset">Preset</label>
+                  <select class="form-select form-select-sm" id="ip-size-preset" style="max-width: 260px">
+                    <option value="" selected>Custom</option>
+                    <option value="orig">Original</option>
+                    <optgroup label="Scale">
+                      <option value="scale:0.25">25%</option>
+                      <option value="scale:0.5">50%</option>
+                      <option value="scale:1">100%</option>
+                      <option value="scale:2">200%</option>
+                    </optgroup>
+                    <optgroup label="YouTube">
+                      <option value="1280x720">Thumbnail (1280×720)</option>
+                      <option value="800x800">Profile (800×800)</option>
+                      <option value="2560x1440">Channel Cover (2560×1440)</option>
+                    </optgroup>
+                    <optgroup label="Instagram">
+                      <option value="320x320">Profile (320×320)</option>
+                      <option value="1080x1080">Post Square (1080×1080)</option>
+                      <option value="1080x1350">Post Portrait (1080×1350)</option>
+                      <option value="1080x1920">Story/Reel (1080×1920)</option>
+                    </optgroup>
+                  </select>
                 </div>
                 <div class="small text-body-secondary mt-2">
                   Tip: resize affects downloads; preview stays fitted to the screen.

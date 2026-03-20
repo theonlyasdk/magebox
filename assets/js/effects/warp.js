@@ -1,33 +1,21 @@
-function clamp(v, min, max) {
-  return Math.min(max, Math.max(min, v));
-}
+import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
-function bilinearSample(src, width, height, x, y) {
-  const x0 = Math.floor(x);
-  const y0 = Math.floor(y);
-  const x1 = Math.min(width - 1, Math.max(0, x0 + 1));
-  const y1 = Math.min(height - 1, Math.max(0, y0 + 1));
-  const xa = Math.min(width - 1, Math.max(0, x0));
-  const ya = Math.min(height - 1, Math.max(0, y0));
-
-  const tx = x - x0;
-  const ty = y - y0;
-
-  const i00 = (ya * width + xa) * 4;
-  const i10 = (ya * width + x1) * 4;
-  const i01 = (y1 * width + xa) * 4;
-  const i11 = (y1 * width + x1) * 4;
-
-  const out = [0, 0, 0, 0];
-  for (let c = 0; c < 4; c++) {
-    const top = src[i00 + c] + (src[i10 + c] - src[i00 + c]) * tx;
-    const bot = src[i01 + c] + (src[i11 + c] - src[i01 + c]) * tx;
-    out[c] = top + (bot - top) * ty;
+const WARP_FRAGMENT = fragmentShaderSource(
+  "uniform float u_amplitude; uniform float u_frequency; uniform float u_axis;",
+  `
+  vec2 uv = v_uv;
+  float tau = 6.28318530718;
+  if (u_axis < 0.5) {
+    uv.x += sin(v_uv.y * tau * u_frequency) * (u_amplitude / u_inputSize.x);
+  } else {
+    uv.y += sin(v_uv.x * tau * u_frequency) * (u_amplitude / u_inputSize.y);
   }
-  return out;
-}
+  gl_FragColor = sampleLinear(uv);
+`,
+);
 
-export default {
+export default defineGpuEffect({
   id: "warp",
   name: "Warp",
   icon: "bi-arrow-repeat",
@@ -46,36 +34,20 @@ export default {
     },
   ],
   defaultParams: { amplitude: 20, frequency: 2, axis: "x" },
-  applyImageData(imageData, width, height, params) {
-    const amp = clamp(Number(params.amplitude ?? 0), 0, 200);
-    const freq = clamp(Number(params.frequency ?? 2), 0.1, 20);
-    const axis = params.axis === "y" ? "y" : "x";
-    if (amp <= 0) return imageData;
-
-    const src = new Uint8ClampedArray(imageData.data);
-    const dst = imageData.data;
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        let sx = x;
-        let sy = y;
-        if (axis === "x") {
-          sx = x + Math.sin((y / height) * Math.PI * 2 * freq) * amp;
-        } else {
-          sy = y + Math.sin((x / width) * Math.PI * 2 * freq) * amp;
-        }
-
-        sx = clamp(sx, 0, width - 1);
-        sy = clamp(sy, 0, height - 1);
-
-        const [r, g, b, a] = bilinearSample(src, width, height, sx, sy);
-        const di = (y * width + x) * 4;
-        dst[di] = r;
-        dst[di + 1] = g;
-        dst[di + 2] = b;
-        dst[di + 3] = a;
-      }
-    }
-    return imageData;
+  gl: {
+    isNeutral(params) {
+      return Number(params.amplitude ?? 0) <= 0;
+    },
+    passes(params) {
+      const amp = Math.min(200, Math.max(0, Number(params.amplitude ?? 0)));
+      if (amp <= 0) return [];
+      return [
+        pass(WARP_FRAGMENT, {
+          u_amplitude: amp,
+          u_frequency: Math.min(20, Math.max(0.1, Number(params.frequency ?? 2))),
+          u_axis: params.axis === "y" ? 1 : 0,
+        }),
+      ];
+    },
   },
-};
+});

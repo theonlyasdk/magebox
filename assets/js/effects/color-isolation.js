@@ -1,42 +1,30 @@
-function clamp(v, min, max) {
-  return Math.min(max, Math.max(min, v));
+import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { fragmentShaderSource } from "../gl/shader-chunks.js";
+
+const COLOR_ISOLATION_FRAGMENT = fragmentShaderSource(
+  "uniform vec3 u_target; uniform float u_tolerance; uniform float u_softness;",
+  `
+  vec4 color = sampleLinear(v_uv);
+  vec3 targetHsl = rgb2hsl(u_target);
+  vec3 colorHsl = rgb2hsl(color.rgb);
+  float softBand = u_tolerance * (0.5 + u_softness);
+  float t0 = max(0.0, u_tolerance - softBand);
+  float t1 = u_tolerance + softBand;
+  float d = hueDistance01(colorHsl.x, targetHsl.x);
+  float keep = d <= t0 ? 1.0 : (d >= t1 ? 0.0 : 1.0 - (d - t0) / max(t1 - t0, 0.0001));
+  float gray = luminance(color.rgb);
+  gl_FragColor = vec4(mix(vec3(gray), color.rgb, keep), color.a);
+`,
+);
+
+function hexToRgb01(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex));
+  if (!m) return [1, 0, 0];
+  const n = parseInt(m[1], 16);
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
-function rgbToHsl(r, g, b) {
-  r /= 255;
-  g /= 255;
-  b /= 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
-
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r:
-        h = (g - b) / d + (g < b ? 6 : 0);
-        break;
-      case g:
-        h = (b - r) / d + 2;
-        break;
-      case b:
-        h = (r - g) / d + 4;
-        break;
-    }
-    h *= 60;
-  }
-  return { h, s, l };
-}
-
-function hueDistance(a, b) {
-  const d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
-}
-
-export default {
+export default defineGpuEffect({
   id: "colorIsolation",
   name: "Color Isolation",
   icon: "bi-palette",
@@ -47,44 +35,15 @@ export default {
     { key: "softness", label: "Softness", type: "range", min: 0, max: 100, step: 1, unit: "%" },
   ],
   defaultParams: { color: "#ff0000", tolerance: 25, softness: 25 },
-  applyImageData(imageData, width, height, params) {
-    const hex = String(params.color ?? "#ff0000");
-    const tol = clamp(Number(params.tolerance ?? 25), 0, 180);
-    const soft = clamp(Number(params.softness ?? 25) / 100, 0, 1);
-
-    const m = /^#?([0-9a-f]{6})$/i.exec(hex);
-    if (!m) return imageData;
-    const n = parseInt(m[1], 16);
-    const tr = (n >> 16) & 255;
-    const tg = (n >> 8) & 255;
-    const tb = n & 255;
-    const target = rgbToHsl(tr, tg, tb);
-
-    const data = imageData.data;
-    const softBand = tol * (0.5 + soft); // widen edge transition
-    const t0 = Math.max(0, tol - softBand);
-    const t1 = tol + softBand;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const { h } = rgbToHsl(r, g, b);
-      const d = hueDistance(h, target.h);
-
-      // keep factor k in [0..1]
-      let k;
-      if (d <= t0) k = 1;
-      else if (d >= t1) k = 0;
-      else k = 1 - (d - t0) / (t1 - t0);
-
-      // grayscale value
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      data[i] = gray * (1 - k) + r * k;
-      data[i + 1] = gray * (1 - k) + g * k;
-      data[i + 2] = gray * (1 - k) + b * k;
-    }
-    return imageData;
+  gl: {
+    passes(params) {
+      return [
+        pass(COLOR_ISOLATION_FRAGMENT, {
+          u_target: hexToRgb01(params.color ?? "#ff0000"),
+          u_tolerance: Math.max(0, Math.min(0.5, Number(params.tolerance ?? 25) / 360)),
+          u_softness: Math.max(0, Math.min(1, Number(params.softness ?? 25) / 100)),
+        }),
+      ];
+    },
   },
-};
-
+});
