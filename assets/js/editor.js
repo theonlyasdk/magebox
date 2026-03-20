@@ -70,9 +70,9 @@ const elements = {
 };
 
 const state = {
-  image: null,
   file: null,
   fileName: null,
+  layers: [],
   selectedEffectId: EffectRegistry[0]?.id ?? null,
   settings: {
     sampling: "linear", // preview smoothing: "linear" | "nearest"
@@ -102,7 +102,7 @@ const state = {
 const STORAGE_KEY = "magebox:lastImage:v1";
 const PRESETS_KEY = "magebox:presets:v1";
 const AUTOSAVE_KEY = "magebox:effectsAutosave:v1";
-const PAN_SENSITIVITY = 0.4;
+const PAN_SENSITIVITY = 1;
 const ZOOM_SENSITIVITY = 0.012;
 let gpuRenderer = null;
 
@@ -331,24 +331,42 @@ function lanczosKernel(t, a) {
   return sinc(x) * sinc(x / a);
 }
 
-function resampleImageData(srcImageData, dw, dh, method) {
+function resampleImageData(srcImageData, dw, dh, method, resizeMethod = "fill") {
   const sw = srcImageData.width;
   const sh = srcImageData.height;
   const src = srcImageData.data;
   const dstImageData = new ImageData(dw, dh);
   const dst = dstImageData.data;
 
-  const scaleX = sw / dw;
-  const scaleY = sh / dh;
+  let scaleX = sw / dw;
+  let scaleY = sh / dh;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (resizeMethod === "fill") {
+    const imgAspect = sw / sh;
+    const targetAspect = dw / dh;
+    if (imgAspect > targetAspect) {
+      // Image is wider than target: crop sides
+      scaleY = sh / dh;
+      scaleX = scaleY;
+      offsetX = (sw - dw * scaleX) / 2;
+    } else {
+      // Image is taller than target: crop top/bottom
+      scaleX = sw / dw;
+      scaleY = scaleX;
+      offsetY = (sh - dh * scaleY) / 2;
+    }
+  }
 
   const radius =
     method === "lanczos3" ? 3 : method === "bicubic" || method === "bicubicSharper" ? 2 : 1;
 
   for (let y = 0; y < dh; y++) {
-    const sy = (y + 0.5) * scaleY - 0.5;
+    const sy = (y + 0.5) * scaleY - 0.5 + offsetY;
     const y0 = Math.floor(sy);
     for (let x = 0; x < dw; x++) {
-      const sx = (x + 0.5) * scaleX - 0.5;
+      const sx = (x + 0.5) * scaleX - 0.5 + offsetX;
       const x0 = Math.floor(sx);
 
       if (method === "nearest") {
@@ -472,8 +490,11 @@ function drawToCanvas(
   targetCanvas,
   { maxWidth, maxHeight, overrideWidth = null, overrideHeight = null } = {},
 ) {
-  if (!state.image) return;
-  const img = state.image;
+  if (!state.layers || state.layers.length === 0) return;
+  
+  // Use first layer for natural dimensions if output not set
+  const firstLayer = state.layers[0];
+  const img = firstLayer.image;
 
   let w;
   let h;
@@ -481,25 +502,30 @@ function drawToCanvas(
     w = Math.max(1, Math.round(overrideWidth));
     h = Math.max(1, Math.round(overrideHeight));
   } else {
+    // If output settings are set, use them as base, otherwise use first layer's natural size.
+    const baseW = state.settings.output.width ?? img.naturalWidth;
+    const baseH = state.settings.output.height ?? img.naturalHeight;
+
     const scale =
       maxWidth && maxHeight
-        ? Math.min(1, maxWidth / img.naturalWidth, maxHeight / img.naturalHeight)
+        ? Math.min(1, maxWidth / baseW, maxHeight / baseH)
         : 1;
-    w = Math.max(1, Math.round(img.naturalWidth * scale));
-    h = Math.max(1, Math.round(img.naturalHeight * scale));
+    w = Math.max(1, Math.round(baseW * scale));
+    h = Math.max(1, Math.round(baseH * scale));
   }
   targetCanvas.width = w;
   targetCanvas.height = h;
 
   if (gpuRenderer) {
     gpuRenderer.renderToCanvas({
-      image: state.image,
+      layers: state.layers,
       effects: getEnabledEffectEntries(),
       width: w,
       height: h,
       previewSampling: state.settings.sampling,
       interpolation: state.settings.sampling === "nearest" ? "nearest" : "bilinear",
       targetCanvas,
+      resizeMethod: state.settings.output.resizeMethod ?? "fill",
     });
     if (targetCanvas === elements.canvas) {
       targetCanvas.style.imageRendering = state.settings.sampling === "nearest" ? "pixelated" : "auto";
@@ -514,7 +540,44 @@ function drawToCanvas(
   const nearestPreview = state.settings.sampling === "nearest";
   ctx.imageSmoothingEnabled = !nearestPreview;
   if (ctx.imageSmoothingEnabled) ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, w, h);
+
+  // Render each layer (currently only one)
+  const resizeMethod = state.settings.output.resizeMethod ?? "fill";
+  for (const layer of state.layers) {
+    if (!layer.enabled) continue;
+    
+    ctx.globalAlpha = layer.opacity ?? 1;
+    ctx.globalCompositeOperation = layer.blendMode ?? "source-over";
+    
+    const layerImg = layer.image;
+    
+    if (resizeMethod === "fill") {
+      const imgAspect = layerImg.naturalWidth / layerImg.naturalHeight;
+      const canvasAspect = w / h;
+      let drawW, drawH, drawX, drawY;
+
+      if (imgAspect > canvasAspect) {
+        // Image is wider than canvas (relatively)
+        drawH = h;
+        drawW = h * imgAspect;
+        drawX = (w - drawW) / 2;
+        drawY = 0;
+      } else {
+        // Image is taller than canvas (relatively)
+        drawW = w;
+        drawH = w / imgAspect;
+        drawX = 0;
+        drawY = (h - drawH) / 2;
+      }
+      ctx.drawImage(layerImg, drawX, drawY, drawW, drawH);
+    } else {
+      // Just draw at layer's coordinates and size
+      ctx.drawImage(layerImg, layer.x, layer.y, layer.width, layer.height);
+    }
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
   ctx.filter = "none";
   applyPixelEffects(ctx, w, h);
 
@@ -554,7 +617,7 @@ function renderEffectsList() {
     left.innerHTML = `<i class="bi ${effect.icon}"></i><span>${effect.name}</span>`;
 
     const badge = document.createElement("span");
-    badge.className = `badge mb-badge-toggle ${effectState.enabled ? "text-bg-primary" : "text-bg-secondary"}`;
+    badge.className = `badge mb-badge-toggle ${effectState.enabled ? "text-bg-primary" : "mb-badge-off"}`;
     badge.textContent = effectState.enabled ? "On" : "Off";
     badge.role = "button";
     badge.tabIndex = 0;
@@ -598,7 +661,7 @@ function renderEffectPanel() {
   if (!effect) {
     elements.panelTitle.textContent = "Properties";
     elements.effectEnabled.checked = false;
-    elements.effectControls.innerHTML = `<div class="text-body-secondary">Select an effect on the left.</div>`;
+    elements.effectControls.innerHTML = `<div class="text-body-secondary p-3">Select an effect on the left.</div>`;
     return;
   }
 
@@ -617,11 +680,21 @@ function renderEffectPanel() {
   const frag = document.createDocumentFragment();
 
   if (effect.description) {
+    const descContainer = document.createElement("div");
+    descContainer.className = "p-3";
     const p = document.createElement("div");
-    p.className = "text-body-secondary small mb-3";
+    p.className = "text-body-secondary small";
     p.textContent = effect.description;
-    frag.appendChild(p);
+    descContainer.appendChild(p);
+    frag.appendChild(descContainer);
+
+    const hr = document.createElement("hr");
+    hr.className = "m-0";
+    frag.appendChild(hr);
   }
+
+  const controlsContainer = document.createElement("div");
+  controlsContainer.className = "p-3";
 
   for (const control of effect.controls ?? []) {
     const key = control.key;
@@ -630,10 +703,33 @@ function renderEffectPanel() {
     const wrapper = document.createElement("div");
     wrapper.className = "mb-3";
 
+    const header = document.createElement("div");
+    header.className = "d-flex justify-content-between align-items-center mb-1";
+
     const label = document.createElement("label");
-    label.className = "form-label";
+    label.className = "form-label m-0";
     label.htmlFor = `control-${effect.id}-${key}`;
     label.textContent = control.label;
+
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "btn btn-link p-0 text-decoration-none small text-body-secondary reset-control-btn";
+    resetBtn.innerHTML = '<i class="bi bi-arrow-counterclockwise"></i>';
+    resetBtn.title = "Reset to default";
+    resetBtn.style.fontSize = "0.8rem";
+    resetBtn.addEventListener("click", () => {
+      const defaultValue = effect.defaultParams?.[key];
+      if (defaultValue !== undefined) {
+        effectState.params[key] = JSON.parse(JSON.stringify(defaultValue));
+        renderEffectPanel();
+        requestRender();
+        Undo.push(`Reset ${control.label}`);
+      }
+    });
+
+    header.appendChild(label);
+    header.appendChild(resetBtn);
+    wrapper.appendChild(header);
 
     if (control.type === "select") {
       const select = document.createElement("select");
@@ -652,7 +748,6 @@ function renderEffectPanel() {
         requestRender();
         Undo.push(`Adjust ${effect.name}`);
       });
-      wrapper.appendChild(label);
       wrapper.appendChild(select);
     } else if (control.type === "color") {
       const group = document.createElement("div");
@@ -723,7 +818,6 @@ function renderEffectPanel() {
       group.appendChild(chooseBtn);
       group.appendChild(pickBtn);
 
-      wrapper.appendChild(label);
       wrapper.appendChild(group);
     } else {
       const input = document.createElement("input");
@@ -792,19 +886,20 @@ function renderEffectPanel() {
         Undo.push(`Adjust ${effect.name}`);
       });
 
-      wrapper.appendChild(label);
       wrapper.appendChild(input);
       wrapper.appendChild(help);
     }
-    frag.appendChild(wrapper);
+    controlsContainer.appendChild(wrapper);
   }
 
   if (!effect.controls?.length) {
     const p = document.createElement("div");
     p.className = "text-body-secondary";
     p.textContent = "No controls for this effect.";
-    frag.appendChild(p);
+    controlsContainer.appendChild(p);
   }
+
+  frag.appendChild(controlsContainer);
 
   elements.effectControls.innerHTML = "";
   elements.effectControls.appendChild(frag);
@@ -835,11 +930,23 @@ function setImageFromFile(file) {
 function setImageFromDataUrl(dataUrl, meta = {}) {
   const img = new Image();
   img.onload = () => {
-    state.image = img;
     state.fileName = meta.name ?? state.fileName ?? "image";
     state.file = meta
       ? { name: meta.name, type: meta.type, size: meta.size }
       : state.file;
+
+    // Reset layers and add the new image as the only layer
+    state.layers = [{
+      image: img,
+      name: state.fileName,
+      x: 0,
+      y: 0,
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+      enabled: true,
+      opacity: 1,
+      blendMode: "source-over"
+    }];
 
     elements.emptyState.classList.add("d-none");
     elements.canvasWrap.classList.remove("d-none");
@@ -860,49 +967,70 @@ function setImageFromDataUrl(dataUrl, meta = {}) {
 }
 
 async function downloadImage() {
-  if (!state.image) return;
-  const outW = Number(state.settings.output.width ?? state.image.naturalWidth);
-  const outH = Number(state.settings.output.height ?? state.image.naturalHeight);
+  if (!state.layers || state.layers.length === 0) return;
+  const firstLayer = state.layers[0];
+  const outW = Number(state.settings.output.width ?? firstLayer.image.naturalWidth);
+  const outH = Number(state.settings.output.height ?? firstLayer.image.naturalHeight);
   const canvas = createCanvas(outW, outH);
 
   if (gpuRenderer) {
     gpuRenderer.renderToCanvas({
-      image: state.image,
+      layers: state.layers,
       effects: getEnabledEffectEntries(),
       width: outW,
       height: outH,
       previewSampling: "linear",
       interpolation: state.settings.interpolation || "bilinear",
       targetCanvas: canvas,
+      resizeMethod: state.settings.output.resizeMethod ?? "fill",
     });
   } else {
+    const resizeMethod = state.settings.output.resizeMethod ?? "fill";
+    
+    // Composite layers for CPU fallback
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, outW, outH);
+    
+    const base = createCanvas(outW, outH);
+    const bctx = base.getContext("2d");
 
-    const needResize = outW !== state.image.naturalWidth || outH !== state.image.naturalHeight;
-    if (needResize) {
-      const srcData = getImageDataFromImage(state.image);
-      const method = state.settings.interpolation || "lanczos3";
-      let resized = resampleImageData(srcData, canvas.width, canvas.height, method);
-      if (method === "bicubicSharper") resized = applyUnsharpMask(resized, 0.35);
-
-      const base = createCanvas(canvas.width, canvas.height);
-      base.getContext("2d").putImageData(resized, 0, 0);
-
-      const ctx = canvas.getContext("2d");
-      ctx.filter = buildFilterString();
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(base, 0, 0);
-      ctx.filter = "none";
-      applyPixelEffects(ctx, canvas.width, canvas.height);
-    } else {
-      const ctx = canvas.getContext("2d");
-      ctx.filter = buildFilterString();
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(state.image, 0, 0, canvas.width, canvas.height);
-      ctx.filter = "none";
-      applyPixelEffects(ctx, canvas.width, canvas.height);
+    for (const layer of state.layers) {
+      if (!layer.enabled) continue;
+      
+      const layerImg = layer.image;
+      const needResize = outW !== layerImg.naturalWidth || outH !== layerImg.naturalHeight || resizeMethod === "fill";
+      
+      let layerCanvas;
+      if (needResize) {
+        const srcData = getImageDataFromImage(layerImg);
+        const method = state.settings.interpolation || "lanczos3";
+        let resized = resampleImageData(srcData, outW, outH, method, resizeMethod);
+        if (method === "bicubicSharper") resized = applyUnsharpMask(resized, 0.35);
+        
+        layerCanvas = createCanvas(outW, outH);
+        layerCanvas.getContext("2d").putImageData(resized, 0, 0);
+      } else {
+        layerCanvas = layerImg;
+      }
+      
+      bctx.globalAlpha = layer.opacity ?? 1;
+      bctx.globalCompositeOperation = layer.blendMode ?? "source-over";
+      
+      if (resizeMethod === "fill") {
+        // fill already handled by resampleImageData if needResize was true
+        // but if needResize was false (somehow), we should still fill
+        bctx.drawImage(layerCanvas, 0, 0);
+      } else {
+        bctx.drawImage(layerCanvas, layer.x, layer.y, layer.width, layer.height);
+      }
     }
+    
+    ctx.filter = buildFilterString();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(base, 0, 0);
+    ctx.filter = "none";
+    applyPixelEffects(ctx, outW, outH);
   }
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
@@ -955,7 +1083,7 @@ function syncImagePropsUi() {
   if (!elements.imagePropsModalEl) return;
 
   const file = state.file;
-  const img = state.image;
+  const img = state.layers[0]?.image;
 
   elements.ipName.textContent = file?.name ?? "—";
   elements.ipFormat.textContent = file?.type ?? "—";
@@ -1130,13 +1258,13 @@ elements.menuToggleTheme?.addEventListener("click", () => {
 });
 
 elements.previewArea?.addEventListener("click", () => {
-  if (!state.image) elements.fileInput.click();
+  if (!state.layers.length) elements.fileInput.click();
 });
 
 function applyZoomStyles() {
   if (!elements.canvas) return;
   const zoom = state.view.zoomFactor;
-  if (!state.image || elements.canvas.width === 0 || elements.canvas.height === 0) {
+  if (!state.layers.length || elements.canvas.width === 0 || elements.canvas.height === 0) {
     elements.zoomLevel &&
       (elements.zoomLevel.textContent = `${Math.round(state.view.zoomFactor * 100)}%`);
     if (elements.zoomSlider) elements.zoomSlider.value = String(state.view.zoomFactor);
@@ -1158,7 +1286,7 @@ function setZoom(next) {
 }
 
 function computeFitZoom() {
-  if (!state.image || !elements.previewArea || !elements.canvas) return 1;
+  if (!state.layers.length || !elements.previewArea || !elements.canvas) return 1;
   const bodyRect = elements.previewArea.getBoundingClientRect();
   const padding = 24; // rough card-body padding allowance
   const maxW = Math.max(1, bodyRect.width - padding);
@@ -1185,7 +1313,7 @@ function initZoomBar() {
 function initPixelHover() {
   if (!elements.canvas || !elements.pixelInfo) return;
   const update = (clientX, clientY) => {
-    if (!state.image) {
+    if (!state.layers.length) {
       elements.pixelInfo.textContent = "—";
       return;
     }
@@ -1588,7 +1716,7 @@ function initPanning() {
   let lastMoveY = 0;
 
   function begin(e, nextMode) {
-    if (!state.image) return;
+    if (!state.layers.length) return;
     active = true;
     mode = nextMode;
     startX = e.clientX;
@@ -1621,7 +1749,7 @@ function initPanning() {
       applyZoomStyles();
       return;
     }
-    if (spaceDown && state.image) {
+    if (spaceDown && state.layers.length) {
       // "Instant" pan while holding Space (no click required)
       if (lastMoveX !== 0 || lastMoveY !== 0) {
         const dx = e.clientX - lastMoveX;
@@ -1761,7 +1889,7 @@ function initWheelZoom() {
   area.addEventListener(
     "wheel",
     (e) => {
-      if (!state.image) return;
+      if (!state.layers.length) return;
       e.preventDefault();
 
       // Touchpad support:
@@ -1859,12 +1987,13 @@ elements.ipInterpolation?.addEventListener("change", () => {
 // Output is always PNG.
 
 function applyResizeFromUi({ changed } = {}) {
-  if (!state.image) return;
+  if (!state.layers.length) return;
   const lockAspect = Boolean(elements.ipLockAspect?.checked);
   state.settings.output.lockAspect = lockAspect;
 
-  const naturalW = state.image.naturalWidth;
-  const naturalH = state.image.naturalHeight;
+  const firstLayer = state.layers[0];
+  const naturalW = firstLayer.image.naturalWidth;
+  const naturalH = firstLayer.image.naturalHeight;
   const aspect = naturalW / naturalH;
 
   let w = Number(elements.ipOutW.value);
@@ -1884,6 +2013,7 @@ function applyResizeFromUi({ changed } = {}) {
   state.settings.output.height = h;
   elements.ipOutW.value = String(w);
   elements.ipOutH.value = String(h);
+  requestRender();
   persistSettings();
 }
 
@@ -1895,10 +2025,11 @@ elements.ipOutH?.addEventListener("change", () => Undo.push("Resize"));
 elements.ipLockAspect?.addEventListener("change", () => Undo.push("Resize"));
 
 elements.ipSizePreset?.addEventListener("change", () => {
-  if (!state.image) return;
+  if (!state.layers.length) return;
   const v = String(elements.ipSizePreset.value || "");
-  const naturalW = state.image.naturalWidth;
-  const naturalH = state.image.naturalHeight;
+  const firstLayer = state.layers[0];
+  const naturalW = firstLayer.image.naturalWidth;
+  const naturalH = firstLayer.image.naturalHeight;
 
   let nextW = state.settings.output.width ?? naturalW;
   let nextH = state.settings.output.height ?? naturalH;
@@ -1924,6 +2055,7 @@ elements.ipSizePreset?.addEventListener("change", () => {
   state.settings.output.height = nextH;
   if (elements.ipOutW) elements.ipOutW.value = String(nextW);
   if (elements.ipOutH) elements.ipOutH.value = String(nextH);
+  requestRender();
   persistSettings();
   Undo.push("Resize");
 });

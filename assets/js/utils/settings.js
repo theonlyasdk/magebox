@@ -13,6 +13,7 @@ const defaults = {
     width: null,
     height: null,
     lockAspect: true,
+    resizeMethod: "fill",
   },
   undoPanelHeight: null,
 };

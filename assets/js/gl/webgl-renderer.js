@@ -3,8 +3,9 @@ import { fragmentShaderSource } from "./shader-chunks.js";
 const VERTEX_SHADER = `
 attribute vec2 a_position;
 varying vec2 v_uv;
+uniform vec4 u_uvTransform;
 void main() {
-  v_uv = (a_position + 1.0) * 0.5;
+  v_uv = (a_position + 1.0) * 0.5 * u_uvTransform.zw + u_uvTransform.xy;
   gl_Position = vec4(a_position, 0.0, 1.0);
 }
 `;
@@ -17,7 +18,6 @@ const COPY_FRAGMENT = fragmentShaderSource(
 );
 
 const RESIZE_BICUBIC_FRAGMENT = fragmentShaderSource(
-  "",
   `
   vec4 cubic(float v) {
     vec4 n = vec4(1.0, 2.0, 3.0, 4.0) - v;
@@ -51,13 +51,11 @@ const RESIZE_BICUBIC_FRAGMENT = fragmentShaderSource(
     float sy = s.z / (s.z + s.w);
     return mix(mix(sample3, sample2, sx), mix(sample1, sample0, sx), sy);
   }
-
-  gl_FragColor = textureBicubic(v_uv);
 `,
+"gl_FragColor = textureBicubic(v_uv);"
 );
 
 const RESIZE_LANCZOS_FRAGMENT = fragmentShaderSource(
-  "",
   `
   float sinc(float x) {
     if (abs(x) < 0.00001) return 1.0;
@@ -76,7 +74,6 @@ const RESIZE_LANCZOS_FRAGMENT = fragmentShaderSource(
     vec2 base = floor(srcCoord);
     vec4 total = vec4(0.0);
     float weightSum = 0.0;
-    // WebGL 1 drivers can be picky about negative loop initializers; use 0..5 and offset.
     for (int yy = 0; yy < 6; yy++) {
       for (int xx = 0; xx < 6; xx++) {
         float ox = float(xx) - 2.0;
@@ -92,9 +89,8 @@ const RESIZE_LANCZOS_FRAGMENT = fragmentShaderSource(
     }
     return total / max(weightSum, 0.00001);
   }
-
-  gl_FragColor = resizeLanczos(v_uv);
 `,
+"gl_FragColor = resizeLanczos(v_uv);"
 );
 
 const SHARPEN_FRAGMENT = fragmentShaderSource(
@@ -130,11 +126,9 @@ export class WebGLRenderer {
     if (!this.gl) throw new Error("WebGL is not available");
 
     this.programCache = new Map();
-    this.texturePool = [];
-    this.framebuffers = [];
     this.sourceTexture = this.gl.createTexture();
     this.positionBuffer = this.gl.createBuffer();
-    this.lastSizeKey = "";
+    this.targetPools = new Map(); // SizeKey -> { textures, framebuffers }
 
     this.#initGeometry();
   }
@@ -199,6 +193,7 @@ export class WebGLRenderer {
         inputSize: gl.getUniformLocation(program, "u_inputSize"),
         outputSize: gl.getUniformLocation(program, "u_outputSize"),
         texelSize: gl.getUniformLocation(program, "u_texelSize"),
+        uvTransform: gl.getUniformLocation(program, "u_uvTransform"),
       },
       uniformCache: new Map(),
     };
@@ -206,20 +201,13 @@ export class WebGLRenderer {
     return record;
   }
 
-  #ensureTargets(width, height) {
+  #getPool(width, height) {
     const key = `${width}x${height}`;
-    if (this.lastSizeKey === key) return;
-    this.lastSizeKey = key;
+    if (this.targetPools.has(key)) return this.targetPools.get(key);
 
     const gl = this.gl;
-    this.canvas.width = width;
-    this.canvas.height = height;
-    gl.viewport(0, 0, width, height);
-
-    this.texturePool.forEach((texture) => gl.deleteTexture(texture));
-    this.framebuffers.forEach((framebuffer) => gl.deleteFramebuffer(framebuffer));
-    this.texturePool = [];
-    this.framebuffers = [];
+    const textures = [];
+    const framebuffers = [];
 
     for (let i = 0; i < 2; i++) {
       const texture = gl.createTexture();
@@ -234,9 +222,13 @@ export class WebGLRenderer {
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
 
-      this.texturePool.push(texture);
-      this.framebuffers.push(framebuffer);
+      textures.push(texture);
+      framebuffers.push(framebuffer);
     }
+
+    const pool = { textures, framebuffers };
+    this.targetPools.set(key, pool);
+    return pool;
   }
 
   #bindSourceTexture(image, filter = "linear") {
@@ -299,7 +291,14 @@ export class WebGLRenderer {
     if (record.locations.outputSize) gl.uniform2f(record.locations.outputSize, outputSize[0], outputSize[1]);
     if (record.locations.texelSize) gl.uniform2f(record.locations.texelSize, 1 / inputSize[0], 1 / inputSize[1]);
 
-    for (const [name, value] of Object.entries(uniforms)) this.#setUniform(record, name, value);
+    const uvTransform = uniforms.u_uvTransform || [0, 0, 1, 1];
+    if (record.locations.uvTransform) {
+      gl.uniform4f(record.locations.uvTransform, uvTransform[0], uvTransform[1], uvTransform[2], uvTransform[3]);
+    }
+
+    for (const [name, value] of Object.entries(uniforms)) {
+      if (name !== "u_uvTransform") this.#setUniform(record, name, value);
+    }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, target);
     gl.viewport(0, 0, outputSize[0], outputSize[1]);
@@ -318,42 +317,63 @@ export class WebGLRenderer {
     return [{ fragment: COPY_FRAGMENT, uniforms: {}, filter: interpolation === "nearest" ? "nearest" : "linear" }];
   }
 
-  renderToCanvas({ image, effects, width, height, previewSampling = "linear", interpolation = "bilinear", targetCanvas }) {
-    if (!image || !targetCanvas) return;
-    this.#ensureTargets(width, height);
+  renderToCanvas({ layers, effects, width, height, previewSampling = "linear", interpolation = "bilinear", targetCanvas, resizeMethod = "fill" }) {
+    if (!layers || layers.length === 0 || !targetCanvas) return;
 
     const gl = this.gl;
+    
+    // Ensure the internal canvas used for the default framebuffer is the correct size
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+    
+    // For now, we only support one layer, so we just use the first one.
+    const layer = layers[0];
+    const image = layer.image;
+    
     const sourceTexture = this.#bindSourceTexture(image, previewSampling === "nearest" ? "nearest" : "linear");
 
     let currentTexture = sourceTexture;
     let currentSize = [image.naturalWidth || image.width, image.naturalHeight || image.height];
     let targetIndex = 0;
 
-    const resizeNeeded = currentSize[0] !== width || currentSize[1] !== height;
-    const resizePasses = resizeNeeded ? this.#resizePasses(interpolation) : [];
-    for (const pass of resizePasses) {
-      this.#drawPass(
-        pass.fragment,
-        currentTexture,
-        currentSize,
-        [width, height],
-        pass.uniforms,
-        this.framebuffers[targetIndex],
-        pass.filter,
-      );
-      currentTexture = this.texturePool[targetIndex];
-      currentSize = [width, height];
-      targetIndex = 1 - targetIndex;
+    // Split effects into those applied at source resolution and those applied at target resolution
+    // Geometry-changing effects like 'repeat' should mark the transition.
+    const enabledEffects = effects.filter((entry) => entry.enabled && entry.effect?.gl);
+    
+    const repeatIdx = enabledEffects.findIndex(e => e.effect.id === 'repeat');
+    const sourceEffects = repeatIdx === -1 ? enabledEffects : enabledEffects.slice(0, repeatIdx);
+    const targetEffects = repeatIdx === -1 ? [] : enabledEffects.slice(repeatIdx + 1);
+    const repeatEffect = repeatIdx === -1 ? null : enabledEffects[repeatIdx];
+
+    // 1. Apply effects at original resolution
+    if (sourceEffects.length > 0) {
+      const pool = this.#getPool(currentSize[0], currentSize[1]);
+      for (const entry of sourceEffects) {
+        const context = { inputSize: currentSize, outputSize: currentSize };
+        const passes = entry.effect.gl.passes(entry.params, context) ?? [];
+        for (const pass of passes) {
+          this.#drawPass(
+            pass.fragmentSource,
+            currentTexture,
+            currentSize,
+            currentSize,
+            pass.uniforms ?? {},
+            pool.framebuffers[targetIndex],
+            pass.filter ?? "linear",
+          );
+          currentTexture = pool.textures[targetIndex];
+          targetIndex = 1 - targetIndex;
+        }
+      }
     }
 
-    const context = {
-      inputSize: currentSize,
-      outputSize: [width, height],
-    };
-
-    const enabledEffects = effects.filter((entry) => entry.enabled && entry.effect?.gl);
-    for (const entry of enabledEffects) {
-      const passes = entry.effect.gl.passes(entry.params, context) ?? [];
+    // 2. Transition pass (Repeat OR Resize/Fill) from Source Size -> Target Size
+    const canvasPool = this.#getPool(width, height);
+    if (repeatEffect) {
+      const context = { inputSize: currentSize, outputSize: [width, height] };
+      const passes = repeatEffect.effect.gl.passes(repeatEffect.params, context) ?? [];
       for (const pass of passes) {
         this.#drawPass(
           pass.fragmentSource,
@@ -361,17 +381,78 @@ export class WebGLRenderer {
           currentSize,
           [width, height],
           pass.uniforms ?? {},
-          this.framebuffers[targetIndex],
+          canvasPool.framebuffers[targetIndex],
           pass.filter ?? "linear",
         );
-        currentTexture = this.texturePool[targetIndex];
+        currentTexture = canvasPool.textures[targetIndex];
+        currentSize = [width, height];
+        targetIndex = 1 - targetIndex;
+      }
+    } else {
+      const resizePasses = this.#resizePasses(interpolation);
+      let firstPassUvTransform = [0, 0, 1, 1];
+      if (resizeMethod === "fill") {
+        const imgAspect = currentSize[0] / currentSize[1];
+        const targetAspect = width / height;
+        if (imgAspect > targetAspect) {
+          const scaleX = targetAspect / imgAspect;
+          firstPassUvTransform = [(1 - scaleX) / 2, 0, scaleX, 1];
+        } else {
+          const scaleY = imgAspect / targetAspect;
+          firstPassUvTransform = [0, (1 - scaleY) / 2, 1, scaleY];
+        }
+      } else {
+          // 'none' or independent placement - for now just draw at top left/natural size
+          const scaleX = width / currentSize[0];
+          const scaleY = height / currentSize[1];
+          firstPassUvTransform = [0, 0, scaleX, scaleY];
+      }
+
+      for (let i = 0; i < resizePasses.length; i++) {
+        const pass = resizePasses[i];
+        const passUniforms = { ...pass.uniforms };
+        if (i === 0) passUniforms.u_uvTransform = firstPassUvTransform;
+
+        this.#drawPass(
+          pass.fragment,
+          currentTexture,
+          currentSize,
+          [width, height],
+          passUniforms,
+          canvasPool.framebuffers[targetIndex],
+          pass.filter,
+        );
+        currentTexture = canvasPool.textures[targetIndex];
         currentSize = [width, height];
         targetIndex = 1 - targetIndex;
       }
     }
 
+    // 3. Apply remaining effects at target resolution
+    if (targetEffects.length > 0) {
+      for (const entry of targetEffects) {
+        const context = { inputSize: currentSize, outputSize: [width, height] };
+        const passes = entry.effect.gl.passes(entry.params, context) ?? [];
+        for (const pass of passes) {
+          this.#drawPass(
+            pass.fragmentSource,
+            currentTexture,
+            currentSize,
+            [width, height],
+            pass.uniforms ?? {},
+            canvasPool.framebuffers[targetIndex],
+            pass.filter ?? "linear",
+          );
+          currentTexture = canvasPool.textures[targetIndex];
+          targetIndex = 1 - targetIndex;
+        }
+      }
+    }
+
+    // Final draw to internal canvas (target = null)
     this.#drawPass(COPY_FRAGMENT, currentTexture, currentSize, [width, height], {}, null, "linear");
 
+    // Copy from internal canvas to visible targetCanvas
     targetCanvas.width = width;
     targetCanvas.height = height;
     const ctx = targetCanvas.getContext("2d");

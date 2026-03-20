@@ -117,6 +117,12 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
+#effects-list .mb-badge-off {
+  background-color: var(--bs-primary);
+  filter: brightness(0.45) saturate(0.8);
+  color: rgba(255, 255, 255, 0.8);
+}
+
 #effects-list .mb-badge-toggle:hover {
   filter: brightness(1.12);
 }
@@ -180,14 +186,8 @@
 
 #preview-area #empty-state {
   min-height: 100%;
-  display: grid;
-  place-items: center;
-  text-align: center;
 }
 
-#preview-area #empty-state i {
-  margin-bottom: 0.25rem !important;
-}
 
 /* Preview canvas zoom sizing */
 #preview-canvas {
@@ -254,6 +254,19 @@
 
 #preview-canvas.is-panning {
   cursor: grabbing;
+}
+
+.reset-control-btn {
+  transition: color 150ms ease;
+}
+
+.reset-control-btn:hover {
+  color: #fff !important;
+}
+
+.reset-control-btn:active {
+  color: var(--bs-secondary-color) !important;
+  transform: translateY(1px);
 }
 
 .undo-panel {
