@@ -64,7 +64,6 @@ const elements = {
   presetSaveBtn: document.getElementById("preset-save-btn"),
   presetsList: document.getElementById("presets-list"),
   presetsEmpty: document.getElementById("presets-empty"),
-  presetsJson: document.getElementById("presets-json"),
 
   colorPopover: document.getElementById("color-popover"),
 };
@@ -123,6 +122,7 @@ function persistSettings() {
     sampling: state.settings.sampling,
     interpolation: state.settings.interpolation,
     output: state.settings.output,
+    selectedEffectId: state.selectedEffectId,
     undoPanelHeight: elements.undoPanel ? elements.undoPanel.getBoundingClientRect().height : null,
   });
 }
@@ -138,6 +138,7 @@ function restoreSettings() {
   if (s.sampling) state.settings.sampling = s.sampling;
   if (s.interpolation) state.settings.interpolation = s.interpolation;
   if (s.output) state.settings.output = { ...state.settings.output, ...s.output };
+  if (s.selectedEffectId) state.selectedEffectId = s.selectedEffectId;
   if (elements.undoPanel && s.undoPanelHeight) {
     elements.undoPanel.style.height = `${Math.max(60, Math.round(s.undoPanelHeight))}px`;
   }
@@ -517,16 +518,38 @@ function drawToCanvas(
   targetCanvas.height = h;
 
   if (gpuRenderer) {
-    gpuRenderer.renderToCanvas({
-      layers: state.layers,
-      effects: getEnabledEffectEntries(),
-      width: w,
-      height: h,
-      previewSampling: state.settings.sampling,
-      interpolation: state.settings.sampling === "nearest" ? "nearest" : "bilinear",
-      targetCanvas,
-      resizeMethod: state.settings.output.resizeMethod ?? "fill",
-    });
+    try {
+      gpuRenderer.renderToCanvas({
+        layers: state.layers,
+        effects: getEnabledEffectEntries(),
+        width: w,
+        height: h,
+        previewSampling: state.settings.sampling,
+        interpolation: state.settings.sampling === "nearest" ? "nearest" : "bilinear",
+        targetCanvas,
+        resizeMethod: state.settings.output.resizeMethod ?? "fill",
+      });
+
+      // Clear errors if successful
+      for (const entry of getEnabledEffectEntries()) {
+        const effId = entry.effect.id;
+        if (state.effects[effId] && state.effects[effId].errors) {
+          state.effects[effId].errors = {};
+          renderEffectPanel();
+        }
+      }
+    } catch (err) {
+      console.error("Render failed:", err);
+      // Try to identify which effect failed
+      // For now, if we're in warp and it failed, it's likely the custom function
+      if (state.selectedEffectId === "warp") {
+        const warpState = state.effects["warp"];
+        if (warpState.params.function === "custom" && !warpState.errors?.customFunc) {
+          warpState.errors = { customFunc: err.message };
+          renderEffectPanel();
+        }
+      }
+    }
     if (targetCanvas === elements.canvas) {
       targetCanvas.style.imageRendering = state.settings.sampling === "nearest" ? "pixelated" : "auto";
       applyZoomStyles();
@@ -627,6 +650,9 @@ function renderEffectsList() {
       effectState.enabled = !effectState.enabled;
       requestRender();
       renderEffectsList();
+      if (state.selectedEffectId === effect.id) {
+        renderEffectPanel();
+      }
       const verb = effectState.enabled ? "Apply" : "Remove";
       Undo.push(`${verb} ${effect.name}`);
     };
@@ -665,6 +691,11 @@ function renderEffectPanel() {
     return;
   }
 
+  // Preserve focus and selection
+  const activeId = document.activeElement?.id;
+  const selectionStart = (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) ? document.activeElement.selectionStart : null;
+  const selectionEnd = (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) ? document.activeElement.selectionEnd : null;
+
   const effectState = state.effects[effect.id];
   elements.panelTitle.textContent = effect.name;
   elements.effectEnabled.checked = Boolean(effectState.enabled);
@@ -700,16 +731,32 @@ function renderEffectPanel() {
     const key = control.key;
     const value = effectState.params[key];
 
+    if (control.show_on) {
+      const actual = effectState.params[control.show_on.key];
+      if (actual !== control.show_on.value) continue;
+    }
+
     const wrapper = document.createElement("div");
     wrapper.className = "mb-3";
 
     const header = document.createElement("div");
     header.className = "d-flex justify-content-between align-items-center mb-1";
 
+    const labelGroup = document.createElement("div");
+    labelGroup.className = "d-flex align-items-center gap-2";
+
     const label = document.createElement("label");
     label.className = "form-label m-0";
     label.htmlFor = `control-${effect.id}-${key}`;
     label.textContent = control.label;
+    labelGroup.appendChild(label);
+
+    if (control.type === "text" && effectState.errors?.[key]) {
+      const warn = document.createElement("i");
+      warn.className = "bi bi-exclamation-triangle-fill text-warning";
+      warn.title = effectState.errors[key];
+      labelGroup.appendChild(warn);
+    }
 
     const resetBtn = document.createElement("button");
     resetBtn.type = "button";
@@ -727,7 +774,7 @@ function renderEffectPanel() {
       }
     });
 
-    header.appendChild(label);
+    header.appendChild(labelGroup);
     header.appendChild(resetBtn);
     wrapper.appendChild(header);
 
@@ -745,6 +792,7 @@ function renderEffectPanel() {
       select.addEventListener("change", () => {
         effectState.params[key] = select.value;
         ensureEnabled();
+        renderEffectPanel();
         requestRender();
         Undo.push(`Adjust ${effect.name}`);
       });
@@ -819,6 +867,23 @@ function renderEffectPanel() {
       group.appendChild(pickBtn);
 
       wrapper.appendChild(group);
+    } else if (control.type === "text") {
+      const input = document.createElement("input");
+      input.className = "form-control form-control-sm";
+      input.id = `control-${effect.id}-${key}`;
+      input.type = "text";
+      input.value = String(value ?? "");
+      input.spellcheck = false;
+      input.addEventListener("input", () => {
+        effectState.params[key] = input.value;
+        ensureEnabled();
+        requestRender();
+      });
+      input.addEventListener("change", () => {
+        ensureEnabled();
+        Undo.push(`Adjust ${effect.name}`);
+      });
+      wrapper.appendChild(input);
     } else {
       const input = document.createElement("input");
       input.className = "form-range";
@@ -903,6 +968,21 @@ function renderEffectPanel() {
 
   elements.effectControls.innerHTML = "";
   elements.effectControls.appendChild(frag);
+
+  // Restore focus and selection
+  if (activeId) {
+    const el = document.getElementById(activeId);
+    if (el) {
+      el.focus();
+      if (selectionStart !== null && selectionEnd !== null && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) {
+        try {
+          el.setSelectionRange(selectionStart, selectionEnd);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
 }
 
 function setImageFromFile(file) {
@@ -925,6 +1005,14 @@ function setImageFromFile(file) {
     }
   };
   reader.readAsDataURL(file);
+}
+
+function updateImageMeta() {
+  if (!state.layers.length || !elements.imageMeta) return;
+  const firstLayer = state.layers[0];
+  const w = state.settings.output.width ?? firstLayer.image.naturalWidth;
+  const h = state.settings.output.height ?? firstLayer.image.naturalHeight;
+  elements.imageMeta.textContent = `${w}×${h} • ${state.fileName}`;
 }
 
 function setImageFromDataUrl(dataUrl, meta = {}) {
@@ -952,9 +1040,12 @@ function setImageFromDataUrl(dataUrl, meta = {}) {
     elements.canvasWrap.classList.remove("d-none");
     elements.downloadBtn.classList.remove("d-none");
     elements.menuDownload?.classList.remove("d-none");
-    elements.imageMeta.textContent = `${img.naturalWidth}×${img.naturalHeight} • ${state.fileName}`;
+    
     if (state.settings.output.width == null) state.settings.output.width = img.naturalWidth;
     if (state.settings.output.height == null) state.settings.output.height = img.naturalHeight;
+    
+    updateImageMeta();
+
     // Default zoom: fit large images, don't upscale tiny images
     const fit = computeFitZoom();
     state.view.zoomFactor = Math.min(1, fit);
@@ -1211,7 +1302,6 @@ function openPresets(mode) {
   if (elements.presetsSaveArea) elements.presetsSaveArea.style.display = mode === "save" ? "" : "none";
   if (elements.presetsLoadArea) elements.presetsLoadArea.style.display = "";
   if (elements.presetName) elements.presetName.value = "";
-  if (elements.presetsJson) elements.presetsJson.textContent = JSON.stringify(getEffectsConfig(), null, 2);
   renderPresetsList();
   presetsModal.show();
 }
@@ -2013,6 +2103,7 @@ function applyResizeFromUi({ changed } = {}) {
   state.settings.output.height = h;
   elements.ipOutW.value = String(w);
   elements.ipOutH.value = String(h);
+  updateImageMeta();
   requestRender();
   persistSettings();
 }
@@ -2055,6 +2146,7 @@ elements.ipSizePreset?.addEventListener("change", () => {
   state.settings.output.height = nextH;
   if (elements.ipOutW) elements.ipOutW.value = String(nextW);
   if (elements.ipOutH) elements.ipOutH.value = String(nextH);
+  updateImageMeta();
   requestRender();
   persistSettings();
   Undo.push("Resize");

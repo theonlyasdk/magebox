@@ -257,8 +257,20 @@ export class WebGLRenderer {
     const gl = this.gl;
     const loc = this.#uniformLocation(record, name);
     if (!loc) return;
+
+    if (typeof value === "boolean") {
+      gl.uniform1i(loc, value ? 1 : 0);
+      return;
+    }
     if (typeof value === "number") {
-      gl.uniform1f(loc, value);
+      // Check if the uniform name suggests an integer or if it's explicitly an int/bool in GLSL.
+      // Since we don't have the type info easily, we'll try to guess or just use 1f for numbers.
+      // Actually, if we want to support 'u_type' as int, we should probably check the value.
+      if (Number.isInteger(value) && (name.includes("type") || name.includes("Index") || name.includes("Mode") || name.includes("Count"))) {
+        gl.uniform1i(loc, value);
+      } else {
+        gl.uniform1f(loc, value);
+      }
       return;
     }
     if (value instanceof Float32Array) {
@@ -339,13 +351,32 @@ export class WebGLRenderer {
     let targetIndex = 0;
 
     // Split effects into those applied at source resolution and those applied at target resolution
-    // Geometry-changing effects like 'repeat' should mark the transition.
     const enabledEffects = effects.filter((entry) => entry.enabled && entry.effect?.gl);
     
     const repeatIdx = enabledEffects.findIndex(e => e.effect.id === 'repeat');
-    const sourceEffects = repeatIdx === -1 ? enabledEffects : enabledEffects.slice(0, repeatIdx);
-    const targetEffects = repeatIdx === -1 ? [] : enabledEffects.slice(repeatIdx + 1);
     const repeatEffect = repeatIdx === -1 ? null : enabledEffects[repeatIdx];
+
+    const sourceEffects = [];
+    const targetEffects = [];
+
+    enabledEffects.forEach((entry, idx) => {
+      if (entry.effect.id === 'repeat') return; // Handled separately as transition
+
+      const preferred = entry.params?.resolutionMode; // "layer" or "canvas"
+      
+      if (preferred === 'layer') {
+        sourceEffects.push(entry);
+      } else if (preferred === 'canvas') {
+        targetEffects.push(entry);
+      } else {
+        // Default behavior: based on position relative to 'repeat'
+        if (repeatIdx === -1 || idx < repeatIdx) {
+          sourceEffects.push(entry);
+        } else {
+          targetEffects.push(entry);
+        }
+      }
+    });
 
     // 1. Apply effects at original resolution
     if (sourceEffects.length > 0) {

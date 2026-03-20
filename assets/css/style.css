@@ -269,6 +269,15 @@
   transform: translateY(1px);
 }
 
+.fade-in {
+  animation: fadeIn 300ms ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .undo-panel {
   flex: 0 0 auto;
   min-width: 0;
