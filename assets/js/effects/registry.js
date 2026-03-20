@@ -8,6 +8,7 @@ import fisheye from "./fisheye.js";
 import gradientMap from "./gradient-map.js";
 import grayscale from "./grayscale.js";
 import greenScreen from "./green-screen.js";
+import halftone from "./halftone.js";
 import noise from "./noise.js";
 import outline from "./outline.js";
 import pixelate from "./pixelate.js";
@@ -29,6 +30,7 @@ export const EffectRegistry = [
   gradientMap,
   grayscale,
   greenScreen,
+  halftone,
   noise,
   outline,
   pixelate,

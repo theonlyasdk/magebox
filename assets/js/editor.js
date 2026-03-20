@@ -37,6 +37,7 @@ const elements = {
   effectsList: document.getElementById("effects-list"),
   effectsCount: document.getElementById("effects-count"),
   emptyState: document.getElementById("empty-state"),
+  renderError: document.getElementById("render-error"),
   canvasWrap: document.getElementById("canvas-wrap"),
   canvas: document.getElementById("preview-canvas"),
   imageMeta: document.getElementById("image-meta"),
@@ -530,6 +531,12 @@ function drawToCanvas(
         resizeMethod: state.settings.output.resizeMethod ?? "fill",
       });
 
+      if (elements.renderError) {
+        elements.renderError.classList.add("d-none");
+        elements.renderError.classList.remove("d-flex");
+      }
+      if (elements.canvasWrap) elements.canvasWrap.classList.remove("d-none");
+
       // Clear errors if successful
       for (const entry of getEnabledEffectEntries()) {
         const effId = entry.effect.id;
@@ -540,6 +547,13 @@ function drawToCanvas(
       }
     } catch (err) {
       console.error("Render failed:", err);
+
+      if (elements.renderError) {
+        elements.renderError.classList.remove("d-none");
+        elements.renderError.classList.add("d-flex");
+      }
+      if (elements.canvasWrap) elements.canvasWrap.classList.add("d-none");
+
       // Try to identify which effect failed
       // For now, if we're in warp and it failed, it's likely the custom function
       if (state.selectedEffectId === "warp") {

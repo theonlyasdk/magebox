@@ -263,10 +263,14 @@ export class WebGLRenderer {
       return;
     }
     if (typeof value === "number") {
-      // Check if the uniform name suggests an integer or if it's explicitly an int/bool in GLSL.
-      // Since we don't have the type info easily, we'll try to guess or just use 1f for numbers.
-      // Actually, if we want to support 'u_type' as int, we should probably check the value.
-      if (Number.isInteger(value) && (name.includes("type") || name.includes("Index") || name.includes("Mode") || name.includes("Count"))) {
+      const lowerName = name.toLowerCase();
+      if (
+        Number.isInteger(value) &&
+        (lowerName.includes("type") ||
+          lowerName.includes("index") ||
+          lowerName.includes("mode") ||
+          lowerName.includes("count"))
+      ) {
         gl.uniform1i(loc, value);
       } else {
         gl.uniform1f(loc, value);
