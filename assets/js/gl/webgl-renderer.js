@@ -129,8 +129,34 @@ export class WebGLRenderer {
     this.sourceTexture = this.gl.createTexture();
     this.positionBuffer = this.gl.createBuffer();
     this.targetPools = new Map(); // SizeKey -> { textures, framebuffers }
+    this.lutTextures = new Map(); // EffectId -> WebGLTexture
 
     this.#initGeometry();
+  }
+
+  #bindLutTexture(id, data) {
+    const gl = this.gl;
+    let texture = this.lutTextures.get(id);
+    if (!texture) {
+      texture = gl.createTexture();
+      this.lutTextures.set(id, texture);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    
+    if (data instanceof HTMLCanvasElement || data instanceof HTMLImageElement || data instanceof ImageBitmap) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    } else {
+      // Legacy 1D LUT support
+      const texData = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) texData[i] = Math.max(0, Math.min(255, Math.round(data[i] * 255)));
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, 256, 1, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, texData);
+    }
+    return texture;
   }
 
   #numberedSource(source) {
@@ -278,18 +304,28 @@ export class WebGLRenderer {
       return;
     }
     if (value instanceof Float32Array) {
-      gl.uniform1fv(loc, value);
+      if (name.toLowerCase().includes("vec4") || name.toLowerCase().includes("regions")) {
+        gl.uniform4fv(loc, value);
+      } else {
+        gl.uniform1fv(loc, value);
+      }
       return;
     }
     if (Array.isArray(value)) {
       if (value.length === 2) gl.uniform2f(loc, value[0], value[1]);
       else if (value.length === 3) gl.uniform3f(loc, value[0], value[1], value[2]);
       else if (value.length === 4) gl.uniform4f(loc, value[0], value[1], value[2], value[3]);
-      else if (value.length > 4) gl.uniform1fv(loc, new Float32Array(value));
+      else if (value.length > 4) {
+        if (name.toLowerCase().includes("vec4") || name.toLowerCase().includes("regions")) {
+          gl.uniform4fv(loc, new Float32Array(value));
+        } else {
+          gl.uniform1fv(loc, new Float32Array(value));
+        }
+      }
     }
   }
 
-  #drawPass(fragmentSource, inputTexture, inputSize, outputSize, uniforms = {}, target = null, filter = "linear") {
+  #drawPass(fragmentSource, inputTexture, inputSize, outputSize, uniforms = {}, target = null, filter = "linear", luts = null, effectId = "default") {
     const gl = this.gl;
     const record = this.#program(fragmentSource);
     gl.useProgram(record.program);
@@ -303,6 +339,20 @@ export class WebGLRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, glFilter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, glFilter);
     if (record.locations.texture) gl.uniform1i(record.locations.texture, 0);
+    
+    // Bind LUTs starting from Texture Unit 1
+    let unit = 1;
+    if (luts) {
+      for (const [name, data] of Object.entries(luts)) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        const lutTexture = this.#bindLutTexture(`${effectId}-${name}`, data);
+        gl.bindTexture(gl.TEXTURE_2D, lutTexture);
+        const loc = this.#uniformLocation(record, name);
+        if (loc) gl.uniform1i(loc, unit);
+        unit++;
+      }
+    }
+
     if (record.locations.inputSize) gl.uniform2f(record.locations.inputSize, inputSize[0], inputSize[1]);
     if (record.locations.outputSize) gl.uniform2f(record.locations.outputSize, outputSize[0], outputSize[1]);
     if (record.locations.texelSize) gl.uniform2f(record.locations.texelSize, 1 / inputSize[0], 1 / inputSize[1]);
@@ -397,6 +447,8 @@ export class WebGLRenderer {
             pass.uniforms ?? {},
             pool.framebuffers[targetIndex],
             pass.filter ?? "linear",
+            pass.luts,
+            entry.effect.id,
           );
           currentTexture = pool.textures[targetIndex];
           targetIndex = 1 - targetIndex;
@@ -418,6 +470,8 @@ export class WebGLRenderer {
           pass.uniforms ?? {},
           canvasPool.framebuffers[targetIndex],
           pass.filter ?? "linear",
+          pass.luts,
+          repeatEffect.effect.id,
         );
         currentTexture = canvasPool.textures[targetIndex];
         currentSize = [width, height];
@@ -477,6 +531,8 @@ export class WebGLRenderer {
             pass.uniforms ?? {},
             canvasPool.framebuffers[targetIndex],
             pass.filter ?? "linear",
+            pass.luts,
+            entry.effect.id,
           );
           currentTexture = canvasPool.textures[targetIndex];
           targetIndex = 1 - targetIndex;

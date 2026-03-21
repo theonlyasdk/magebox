@@ -1,8 +1,9 @@
 import { EffectRegistry } from "./effects/registry.js";
 import { WebGLRenderer } from "./gl/webgl-renderer.js";
-import { clampNumber, lerp } from "./utils/math.js";
+import { clampNumber, lerp, generateSplineLUT } from "./utils/math.js";
 import { rgbToHex } from "./utils/color.js";
 import { Settings } from "./utils/settings.js";
+import { MageboxUI } from "./magebox-ui.js";
 
 const elements = {
   fileInput: document.getElementById("file-input"),
@@ -11,11 +12,16 @@ const elements = {
   menuDownload: document.getElementById("menu-download"),
   menuSavePreset: document.getElementById("menu-save-preset"),
   menuLoadPreset: document.getElementById("menu-load-preset"),
+  menuUndo: document.getElementById("menu-undo"),
+  menuRedo: document.getElementById("menu-redo"),
   menuResetEffects: document.getElementById("menu-reset-effects"),
   menuImageProperties: document.getElementById("menu-image-properties"),
   menuToggleTheme: document.getElementById("menu-toggle-theme"),
   menuToggleInfoBar: document.getElementById("menu-toggle-infobar"),
   menuToggleUndo: document.getElementById("menu-toggle-undo"),
+  menuToggleCheckerboard: document.getElementById("menu-toggle-checkerboard"),
+  menuSoloEffect: document.getElementById("menu-solo-effect"),
+  menuAbout: document.getElementById("menu-about"),
   previewArea: document.getElementById("preview-area"),
   previewInfoBar: document.getElementById("preview-infobar"),
   zoomOut: document.getElementById("zoom-out"),
@@ -25,6 +31,7 @@ const elements = {
   zoomLevel: document.getElementById("zoom-level"),
   pixelInfo: document.getElementById("pixel-info"),
   colorHoverIndicator: document.getElementById("color-hover-indicator"),
+  brushIndicator: document.getElementById("brush-indicator"),
   undoPanel: document.getElementById("undo-panel"),
   undoResizer: document.getElementById("undo-resizer"),
   undoList: document.getElementById("undo-list"),
@@ -38,10 +45,14 @@ const elements = {
   effectsCount: document.getElementById("effects-count"),
   emptyState: document.getElementById("empty-state"),
   renderError: document.getElementById("render-error"),
+  viewErrorBtn: document.getElementById("view-error-btn"),
+  errorModalEl: document.getElementById("error-modal"),
+  errorText: document.getElementById("error-text"),
   canvasWrap: document.getElementById("canvas-wrap"),
   canvas: document.getElementById("preview-canvas"),
   imageMeta: document.getElementById("image-meta"),
   panelTitle: document.getElementById("panel-title"),
+  soloContainer: document.getElementById("solo-container"),
   effectEnabled: document.getElementById("effect-enabled"),
   effectControls: document.getElementById("effect-controls"),
 
@@ -65,6 +76,13 @@ const elements = {
   presetSaveBtn: document.getElementById("preset-save-btn"),
   presetsList: document.getElementById("presets-list"),
   presetsEmpty: document.getElementById("presets-empty"),
+
+  importConfirmModalEl: document.getElementById("import-confirm-modal"),
+  importDontShow: document.getElementById("import-dont-show"),
+  importKeepBtn: document.getElementById("import-keep-btn"),
+  importResizeBtn: document.getElementById("import-resize-btn"),
+
+  aboutModalEl: document.getElementById("about-modal"),
 
   colorPopover: document.getElementById("color-popover"),
 };
@@ -90,6 +108,8 @@ const state = {
     panY: 0,
     showUndoPanel: false,
     colorPicker: null, // { effectId, key }
+    maskDrawing: { active: false, mode: 'add', size: 20, effectId: null, paramKey: null },
+    soloEffectId: null,
   },
   effects: Object.fromEntries(
     EffectRegistry.map((effect) => [
@@ -117,6 +137,8 @@ function persistSettings() {
     theme: document.documentElement.dataset.bsTheme ?? "dark",
     showInfoBar: state.view.showInfoBar,
     showUndoPanel: state.view.showUndoPanel,
+    showCheckerboard: state.view.showCheckerboard,
+    importAction: state.settings.importAction,
     zoomFactor: state.view.zoomFactor,
     panX: state.view.panX,
     panY: state.view.panY,
@@ -133,6 +155,8 @@ function restoreSettings() {
   document.documentElement.dataset.bsTheme = s.theme ?? "dark";
   state.view.showInfoBar = Boolean(s.showInfoBar);
   state.view.showUndoPanel = Boolean(s.showUndoPanel);
+  state.view.showCheckerboard = s.showCheckerboard !== false;
+  state.settings.importAction = s.importAction ?? "ask";
   state.view.zoomFactor = clampNumber(Number(s.zoomFactor ?? 1), 0.01, 30);
   state.view.panX = clampNumber(Number(s.panX ?? 0), -100000, 100000);
   state.view.panY = clampNumber(Number(s.panY ?? 0), -100000, 100000);
@@ -257,9 +281,20 @@ function getEnabledEffects() {
 }
 
 function getEnabledEffectEntries() {
+  if (state.view.soloEffectId) {
+    const effect = EffectRegistry.find(e => e.id === state.view.soloEffectId);
+    if (effect) {
+      return [{
+        effect,
+        enabled: true,
+        params: state.effects[effect.id]?.params ?? {},
+      }];
+    }
+  }
+
   return EffectRegistry.map((effect) => ({
     effect,
-    enabled: Boolean(state.effects[effect.id]?.enabled),
+    enabled: state.effects[effect.id]?.enabled,
     params: state.effects[effect.id]?.params ?? {},
   })).filter((entry) => entry.enabled);
 }
@@ -547,6 +582,7 @@ function drawToCanvas(
       }
     } catch (err) {
       console.error("Render failed:", err);
+      lastRenderError = err.message || String(err);
 
       if (elements.renderError) {
         elements.renderError.classList.remove("d-none");
@@ -714,6 +750,43 @@ function renderEffectPanel() {
   elements.panelTitle.textContent = effect.name;
   elements.effectEnabled.checked = Boolean(effectState.enabled);
 
+  // Render Solo and Reset buttons
+  if (elements.soloContainer) {
+    elements.soloContainer.innerHTML = "";
+    elements.soloContainer.className = "d-flex align-items-center gap-2";
+
+    const isSolo = state.view.soloEffectId === effect.id;
+    const badge = document.createElement("span");
+    badge.className = `badge mb-align-middle d-inline-flex align-items-center justify-content-center ${isSolo ? "text-bg-warning" : "mb-badge-solo-off"}`;
+    badge.textContent = "Solo";
+    badge.style.height = "20px"; // Fixed height for consistent centering
+    badge.title = isSolo ? "Turn off Solo mode" : "Isolate this effect (temporarily disable others)";
+    badge.role = "button";
+    badge.style.cursor = "pointer";
+    badge.onclick = () => {
+      state.view.soloEffectId = isSolo ? null : effect.id;
+      renderEffectPanel();
+      requestRender();
+    };
+    elements.soloContainer.appendChild(badge);
+
+    // Reset All button
+    const resetAllBtn = document.createElement("button");
+    resetAllBtn.type = "button";
+    resetAllBtn.className = "btn btn-link p-0 text-decoration-none small text-body-secondary reset-control-btn mb-align-middle";
+    resetAllBtn.innerHTML = '<i class="bi bi-arrow-counterclockwise" style="font-size: 1rem;"></i>';
+    resetAllBtn.title = `Reset all ${effect.name} parameters to default`;
+    resetAllBtn.onclick = () => {
+      if (effect.defaultParams) {
+        effectState.params = JSON.parse(JSON.stringify(effect.defaultParams));
+        renderEffectPanel();
+        requestRender();
+        Undo.push(`Reset all ${effect.name} params`);
+      }
+    };
+    elements.soloContainer.appendChild(resetAllBtn);
+  }
+
   function ensureEnabled() {
     if (effectState.enabled) return;
     effectState.enabled = true;
@@ -741,13 +814,13 @@ function renderEffectPanel() {
   const controlsContainer = document.createElement("div");
   controlsContainer.className = "p-3";
 
-  for (const control of effect.controls ?? []) {
-    const key = control.key;
+  for (const param of effect.params ?? []) {
+    const key = param.key;
     const value = effectState.params[key];
 
-    if (control.show_on) {
-      const actual = effectState.params[control.show_on.key];
-      if (actual !== control.show_on.value) continue;
+    if (param.show_on) {
+      const actual = effectState.params[param.show_on.key];
+      if (actual !== param.show_on.value) continue;
     }
 
     const wrapper = document.createElement("div");
@@ -762,10 +835,10 @@ function renderEffectPanel() {
     const label = document.createElement("label");
     label.className = "form-label m-0";
     label.htmlFor = `control-${effect.id}-${key}`;
-    label.textContent = control.label;
+    label.textContent = param.label;
     labelGroup.appendChild(label);
 
-    if (control.type === "text" && effectState.errors?.[key]) {
+    if (param.type === "text" && effectState.errors?.[key]) {
       const warn = document.createElement("i");
       warn.className = "bi bi-exclamation-triangle-fill text-warning";
       warn.title = effectState.errors[key];
@@ -784,7 +857,7 @@ function renderEffectPanel() {
         effectState.params[key] = JSON.parse(JSON.stringify(defaultValue));
         renderEffectPanel();
         requestRender();
-        Undo.push(`Reset ${control.label}`);
+        Undo.push(`Reset ${param.label}`);
       }
     });
 
@@ -792,17 +865,47 @@ function renderEffectPanel() {
     header.appendChild(resetBtn);
     wrapper.appendChild(header);
 
-    if (control.type === "select") {
+    if (param.type === "select") {
+      const selectGroup = document.createElement("div");
+      selectGroup.className = "d-flex align-items-center gap-1";
+
       const select = document.createElement("select");
-      select.className = "form-select";
+      select.className = "form-select form-select-sm";
       select.id = `control-${effect.id}-${key}`;
-      for (const opt of control.options ?? []) {
+      for (const opt of param.options ?? []) {
         const option = document.createElement("option");
         option.value = String(opt.value);
         option.textContent = opt.label ?? String(opt.value);
         select.appendChild(option);
       }
-      select.value = String(value ?? (control.options?.[0]?.value ?? ""));
+      select.value = String(value ?? (param.options?.[0]?.value ?? ""));
+      
+      const cycle = (dir) => {
+        const options = param.options ?? [];
+        if (options.length < 2) return;
+        let idx = options.findIndex(o => String(o.value) === select.value);
+        idx = (idx + dir + options.length) % options.length;
+        const nextVal = String(options[idx].value);
+        select.value = nextVal;
+        effectState.params[key] = nextVal;
+        ensureEnabled();
+        renderEffectPanel();
+        requestRender();
+        Undo.push(`Adjust ${effect.name}`);
+      };
+
+      const btnPrev = document.createElement("button");
+      btnPrev.type = "button";
+      btnPrev.className = "btn btn-link p-0 text-decoration-none text-body-secondary reset-control-btn";
+      btnPrev.innerHTML = '<i class="bi bi-chevron-left"></i>';
+      btnPrev.addEventListener("click", () => cycle(-1));
+
+      const btnNext = document.createElement("button");
+      btnNext.type = "button";
+      btnNext.className = "btn btn-link p-0 text-decoration-none text-body-secondary reset-control-btn";
+      btnNext.innerHTML = '<i class="bi bi-chevron-right"></i>';
+      btnNext.addEventListener("click", () => cycle(1));
+
       select.addEventListener("change", () => {
         effectState.params[key] = select.value;
         ensureEnabled();
@@ -810,8 +913,12 @@ function renderEffectPanel() {
         requestRender();
         Undo.push(`Adjust ${effect.name}`);
       });
-      wrapper.appendChild(select);
-    } else if (control.type === "color") {
+
+      selectGroup.appendChild(btnPrev);
+      selectGroup.appendChild(select);
+      selectGroup.appendChild(btnNext);
+      wrapper.appendChild(selectGroup);
+    } else if (param.type === "color") {
       const group = document.createElement("div");
       group.className = "btn-group w-100 color-split";
 
@@ -881,7 +988,7 @@ function renderEffectPanel() {
       group.appendChild(pickBtn);
 
       wrapper.appendChild(group);
-    } else if (control.type === "text") {
+    } else if (param.type === "text") {
       const input = document.createElement("input");
       input.className = "form-control form-control-sm";
       input.id = `control-${effect.id}-${key}`;
@@ -898,15 +1005,195 @@ function renderEffectPanel() {
         Undo.push(`Adjust ${effect.name}`);
       });
       wrapper.appendChild(input);
+    } else if (param.type === "switch") {
+      const switchWrap = document.createElement("div");
+      switchWrap.className = "form-check form-switch";
+      
+      const input = document.createElement("input");
+      input.className = "form-check-input";
+      input.type = "checkbox";
+      input.id = `control-${effect.id}-${key}`;
+      input.checked = Boolean(value);
+      
+      const switchLabel = document.createElement("label");
+      switchLabel.className = "form-check-label small text-body-secondary";
+      switchLabel.htmlFor = input.id;
+      switchLabel.textContent = param.description ?? "";
+
+      input.addEventListener("change", () => {
+        effectState.params[key] = input.checked;
+        ensureEnabled();
+        requestRender();
+        Undo.push(`Toggle ${param.label}`);
+      });
+
+      switchWrap.appendChild(input);
+      switchWrap.appendChild(switchLabel);
+      wrapper.appendChild(switchWrap);
+    } else if (param.type === "mask") {
+      const toolbar = document.createElement("div");
+      toolbar.className = "btn-group btn-group-sm w-100 mt-2 mb-2";
+      
+      const drawState = state.view.maskDrawing || { active: false, mode: 'add', size: 20 };
+      state.view.maskDrawing = drawState;
+
+      const btnAdd = document.createElement("button");
+      btnAdd.className = `btn btn-outline-primary ${drawState.active && drawState.mode === 'add' ? 'active' : ''}`;
+      btnAdd.innerHTML = '<i class="bi bi-pencil-fill me-1"></i>Keep';
+      btnAdd.onclick = () => {
+        const wasActive = drawState.active && drawState.mode === 'add';
+        drawState.active = !wasActive;
+        drawState.mode = 'add';
+        drawState.effectId = effect.id;
+        drawState.paramKey = key;
+        applyMaskDrawingCursor();
+        renderEffectPanel();
+      };
+
+      const btnSub = document.createElement("button");
+      btnSub.className = `btn btn-outline-danger ${drawState.active && drawState.mode === 'sub' ? 'active' : ''}`;
+      btnSub.innerHTML = '<i class="bi bi-eraser-fill me-1"></i>Remove';
+      btnSub.onclick = () => {
+        const wasActive = drawState.active && drawState.mode === 'sub';
+        drawState.active = !wasActive;
+        drawState.mode = 'sub';
+        drawState.effectId = effect.id;
+        drawState.paramKey = key;
+        applyMaskDrawingCursor();
+        renderEffectPanel();
+      };
+
+      const btnClear = document.createElement("button");
+      btnClear.className = "btn btn-outline-secondary";
+      btnClear.innerHTML = '<i class="bi bi-trash-fill me-1"></i>Clear';
+      btnClear.onclick = () => {
+        effectState.params[key] = null;
+        drawState.active = false;
+        applyMaskDrawingCursor();
+        if (elements.brushIndicator) elements.brushIndicator.classList.add("d-none");
+        renderEffectPanel();
+        requestRender();
+        Undo.push(`Clear ${param.label}`);
+      };
+
+      toolbar.appendChild(btnAdd);
+      toolbar.appendChild(btnSub);
+      toolbar.appendChild(btnClear);
+      wrapper.appendChild(toolbar);
+
+      if (drawState.active) {
+        const sizeInput = document.createElement("input");
+        sizeInput.type = "range";
+        sizeInput.className = "form-range mt-1";
+        sizeInput.min = "5";
+        sizeInput.max = "100";
+        sizeInput.value = String(drawState.size);
+        sizeInput.oninput = () => { drawState.size = Number(sizeInput.value); };
+        
+        const sizeLabel = document.createElement("div");
+        sizeLabel.className = "x-small text-body-secondary text-center";
+        sizeLabel.textContent = `Brush Size: ${drawState.size}px`;
+        sizeInput.addEventListener('input', () => { sizeLabel.textContent = `Brush Size: ${sizeInput.value}px`; });
+
+        wrapper.appendChild(sizeLabel);
+        wrapper.appendChild(sizeInput);
+      }
+    } else if (param.type === "regions") {
+      const editorWrap = document.createElement("div");
+      editorWrap.className = "mt-2";
+      
+      new MageboxUI.RegionsEditor({
+        container: editorWrap,
+        regions: Array.isArray(value) ? value : (param.default ?? []),
+        onChange: (newRegions) => {
+          effectState.params[key] = newRegions.map(r => ({ ...r }));
+          ensureEnabled();
+          requestRender();
+        }
+      });
+      
+      wrapper.appendChild(editorWrap);
+    } else if (param.type === "curves") {
+      const editorWrap = document.createElement("div");
+      editorWrap.className = "mt-2 d-flex justify-content-center";
+      
+      const editor = new MageboxUI.CurvesEditor({
+        container: editorWrap,
+        points: Array.isArray(value) ? value : (param.default ?? [[0,0], [1,1]]),
+        color: param.color ?? '#0d6efd',
+        onChange: (newPoints) => {
+          effectState.params[key] = newPoints.map(p => [...p]);
+          ensureEnabled();
+          requestRender();
+        }
+      });
+
+      // Compute histogram for the channel
+      if (state.layers.length > 0) {
+        const firstLayer = state.layers[0];
+        const img = firstLayer.image;
+        const tempCanvas = document.createElement('canvas');
+        // Downsample for speed
+        const targetW = 128;
+        const targetH = Math.round(targetW * (img.naturalHeight / img.naturalWidth));
+        tempCanvas.width = targetW;
+        tempCanvas.height = targetH;
+        const tctx = tempCanvas.getContext('2d');
+        tctx.drawImage(img, 0, 0, targetW, targetH);
+        const data = tctx.getImageData(0, 0, targetW, targetH).data;
+        
+        const hist = new Uint32Array(256);
+        const channelIndex = param.key === 'red' ? 0 : param.key === 'green' ? 1 : param.key === 'blue' ? 2 : -1;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          let val;
+          if (channelIndex === -1) {
+            // Master (Luminance)
+            val = Math.round(0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
+          } else {
+            val = data[i + channelIndex];
+          }
+          hist[val]++;
+        }
+        editor.setHistogram(hist);
+      }
+      
+      wrapper.appendChild(editorWrap);
+    } else if (param.min === 0 && param.max === 1 && param.step === 1) {
+      // Automatic conversion of 0-1 integer ranges to checkboxes
+      const checkWrap = document.createElement("div");
+      checkWrap.className = "form-check";
+
+      const input = document.createElement("input");
+      input.className = "form-check-input";
+      input.type = "checkbox";
+      input.id = `control-${effect.id}-${key}`;
+      input.checked = Number(value) === 1;
+
+      const checkLabel = document.createElement("label");
+      checkLabel.className = "form-check-label small text-body-secondary";
+      checkLabel.htmlFor = input.id;
+      checkLabel.textContent = param.description ?? "Enable";
+
+      input.addEventListener("change", () => {
+        effectState.params[key] = input.checked ? 1 : 0;
+        ensureEnabled();
+        requestRender();
+        Undo.push(`Toggle ${param.label}`);
+      });
+
+      checkWrap.appendChild(input);
+      checkWrap.appendChild(checkLabel);
+      wrapper.appendChild(checkWrap);
     } else {
       const input = document.createElement("input");
       input.className = "form-range";
       input.id = `control-${effect.id}-${key}`;
-      input.type = control.type ?? "range";
-      if (control.min != null) input.min = String(control.min);
-      if (control.max != null) input.max = String(control.max);
-      if (control.step != null) input.step = String(control.step);
-      const transform = control.transform;
+      input.type = param.type ?? "range";
+      if (param.min != null) input.min = String(param.min);
+      if (param.max != null) input.max = String(param.max);
+      if (param.step != null) input.step = String(param.step);
+      const transform = param.transform;
       if (transform?.type === "exp") {
         const base = Number(transform.base ?? 10);
         const pv = clampNumber(
@@ -916,13 +1203,13 @@ function renderEffectPanel() {
         );
         input.value = String(Math.log(pv) / Math.log(base));
       } else {
-        input.value = String(value ?? control.min ?? 0);
+        input.value = String(value ?? param.min ?? 0);
       }
 
       const help = document.createElement("div");
       help.className = "small text-body-secondary d-flex justify-content-between";
       const current = document.createElement("span");
-      const unit = control.unit ? ` ${control.unit}` : "";
+      const unit = param.unit ? ` ${param.unit}` : "";
       const formatValue = () => {
         if (transform?.type === "exp") {
           const base = Number(transform.base ?? 10);
@@ -935,8 +1222,8 @@ function renderEffectPanel() {
       };
       current.textContent = formatValue();
       const range = document.createElement("span");
-      const minText = control.min != null ? control.min : "";
-      const maxText = control.max != null ? control.max : "";
+      const minText = param.min != null ? param.min : "";
+      const maxText = param.max != null ? param.max : "";
       range.textContent = minText !== "" && maxText !== "" ? `${minText}–${maxText}${unit}` : "";
       help.appendChild(current);
       help.appendChild(range);
@@ -953,8 +1240,8 @@ function renderEffectPanel() {
             transform.paramMax ?? actual,
           );
         } else {
-          const min = control.min != null ? Number(control.min) : -Infinity;
-          const max = control.max != null ? Number(control.max) : Infinity;
+          const min = param.min != null ? Number(param.min) : -Infinity;
+          const max = param.max != null ? Number(param.max) : Infinity;
           effectState.params[key] = clampNumber(numericValue, min, max);
         }
         ensureEnabled();
@@ -971,7 +1258,7 @@ function renderEffectPanel() {
     controlsContainer.appendChild(wrapper);
   }
 
-  if (!effect.controls?.length) {
+  if (!effect.params?.length) {
     const p = document.createElement("div");
     p.className = "text-body-secondary";
     p.textContent = "No controls for this effect.";
@@ -1029,9 +1316,13 @@ function updateImageMeta() {
   elements.imageMeta.textContent = `${w}×${h} • ${state.fileName}`;
 }
 
-function setImageFromDataUrl(dataUrl, meta = {}) {
+function setImageFromDataUrl(dataUrl, meta = {}, options = {}) {
   const img = new Image();
-  img.onload = () => {
+  img.onload = async () => {
+    const choice = options.skipConfirm 
+      ? "resize" 
+      : await confirmImportAction(img.naturalWidth, img.naturalHeight);
+    
     state.fileName = meta.name ?? state.fileName ?? "image";
     state.file = meta
       ? { name: meta.name, type: meta.type, size: meta.size }
@@ -1055,8 +1346,16 @@ function setImageFromDataUrl(dataUrl, meta = {}) {
     elements.downloadBtn.classList.remove("d-none");
     elements.menuDownload?.classList.remove("d-none");
     
-    if (state.settings.output.width == null) state.settings.output.width = img.naturalWidth;
-    if (state.settings.output.height == null) state.settings.output.height = img.naturalHeight;
+    if (choice === "resize") {
+      state.settings.output.width = img.naturalWidth;
+      state.settings.output.height = img.naturalHeight;
+      if (elements.ipOutW) elements.ipOutW.value = String(img.naturalWidth);
+      if (elements.ipOutH) elements.ipOutH.value = String(img.naturalHeight);
+    } else {
+      // Ensure we have some canvas size if this was the first load
+      if (state.settings.output.width == null) state.settings.output.width = img.naturalWidth;
+      if (state.settings.output.height == null) state.settings.output.height = img.naturalHeight;
+    }
     
     updateImageMeta();
 
@@ -1183,6 +1482,70 @@ function humanBytes(bytes) {
 const imagePropsModal =
   elements.imagePropsModalEl ? new bootstrap.Modal(elements.imagePropsModalEl) : null;
 const presetsModal = elements.presetsModalEl ? new bootstrap.Modal(elements.presetsModalEl) : null;
+const errorModal = elements.errorModalEl ? new bootstrap.Modal(elements.errorModalEl) : null;
+const importConfirmModal = elements.importConfirmModalEl ? new bootstrap.Modal(elements.importConfirmModalEl) : null;
+const aboutModal = elements.aboutModalEl ? new bootstrap.Modal(elements.aboutModalEl) : null;
+let lastRenderError = "";
+
+function initErrorModal() {
+  elements.viewErrorBtn?.addEventListener("click", () => {
+    if (elements.errorText) elements.errorText.value = lastRenderError;
+    errorModal?.show();
+  });
+}
+
+function initAboutModal() {
+  elements.menuAbout?.addEventListener("click", () => {
+    aboutModal?.show();
+  });
+}
+
+let pendingImportAction = null;
+
+function initImportConfirmModal() {
+  elements.importKeepBtn?.addEventListener("click", () => {
+    if (elements.importDontShow?.checked) {
+      state.settings.importAction = "keep";
+      persistSettings();
+    }
+    pendingImportAction?.("keep");
+    importConfirmModal?.hide();
+  });
+
+  elements.importResizeBtn?.addEventListener("click", () => {
+    if (elements.importDontShow?.checked) {
+      state.settings.importAction = "resize";
+      persistSettings();
+    }
+    pendingImportAction?.("resize");
+    importConfirmModal?.hide();
+  });
+}
+
+async function confirmImportAction(imgW, imgH) {
+  const currentW = state.settings.output.width;
+  const currentH = state.settings.output.height;
+
+  if (!currentW || !currentH || (currentW === imgW && currentH === imgH)) {
+    return "resize";
+  }
+
+  if (state.settings.importAction === "resize") return "resize";
+  if (state.settings.importAction === "keep") return "keep";
+
+  // Ask user
+  return new Promise((resolve) => {
+    pendingImportAction = resolve;
+    if (elements.importDontShow) elements.importDontShow.checked = false;
+    
+    const curEl = document.getElementById("import-current-dim");
+    const newEl = document.getElementById("import-new-dim");
+    if (curEl) curEl.textContent = `${currentW}×${currentH}`;
+    if (newEl) newEl.textContent = `${imgW}×${imgH}`;
+
+    importConfirmModal?.show();
+  });
+}
 
 function syncImagePropsUi() {
   if (!elements.imagePropsModalEl) return;
@@ -1507,6 +1870,151 @@ function initColorPicker() {
   });
 }
 
+const maskOffscreenCanvases = new Map();
+
+function initMaskDrawing() {
+  const canvas = elements.canvas;
+  const area = elements.previewArea;
+  const indicator = elements.brushIndicator;
+  if (!canvas || !area || !indicator) return;
+
+  let isDrawing = false;
+  let lastX = null;
+  let lastY = null;
+
+  const setIndicator = (clientX, clientY) => {
+    const ds = state.view.maskDrawing;
+    if (!ds.active) {
+      indicator.classList.add("d-none");
+      return;
+    }
+
+    const areaRect = area.getBoundingClientRect();
+    const x = clientX - areaRect.left;
+    const y = clientY - areaRect.top;
+
+    // Calculate visual size based on zoom
+    const zoom = state.view.zoomFactor;
+    const visualSize = ds.size * (canvas.getBoundingClientRect().width / canvas.width);
+
+    indicator.style.left = `${x}px`;
+    indicator.style.top = `${y}px`;
+    indicator.style.width = `${visualSize}px`;
+    indicator.style.height = `${visualSize}px`;
+    indicator.style.borderColor = ds.mode === 'add' ? '#198754' : '#dc3545'; // Green or Red
+    indicator.classList.remove("d-none");
+  };
+
+  const getMaskCanvas = (effectId, paramKey) => {
+    const key = `${effectId}-${paramKey}`;
+    if (maskOffscreenCanvases.has(key)) return maskOffscreenCanvases.get(key);
+    
+    const cvs = document.createElement('canvas');
+    const firstLayer = state.layers[0];
+    cvs.width = firstLayer ? firstLayer.image.naturalWidth : 1024;
+    cvs.height = firstLayer ? firstLayer.image.naturalHeight : 1024;
+    
+    const ctx = cvs.getContext('2d');
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, cvs.width, cvs.height);
+    
+    const existing = state.effects[effectId]?.params[paramKey];
+    if (existing) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+      img.src = existing;
+    } else {
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, cvs.width, cvs.height);
+    }
+
+    maskOffscreenCanvases.set(key, cvs);
+    return cvs;
+  };
+
+  const draw = (clientX, clientY) => {
+    const ds = state.view.maskDrawing;
+    if (!ds.active || !ds.effectId) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const rx = (clientX - rect.left) / rect.width;
+    const ry = (clientY - rect.top) / rect.height;
+    if (rx < 0 || rx > 1 || ry < 0 || ry > 1) return;
+
+    const mCvs = getMaskCanvas(ds.effectId, ds.paramKey);
+    const mCtx = mCvs.getContext('2d');
+    
+    // Exact mapping from screen pixels to mask-canvas pixels
+    const x = rx * mCvs.width;
+    const y = ry * mCvs.height;
+
+    // Convert screen brush size to mask-canvas size
+    const scale = mCvs.width / rect.width;
+    const brushRadius = (ds.size / 2) * scale;
+
+    mCtx.globalCompositeOperation = 'source-over';
+    const drawColor = ds.mode === 'add' ? 'white' : 'black';
+    mCtx.fillStyle = drawColor;
+    mCtx.strokeStyle = drawColor;
+    mCtx.lineWidth = brushRadius * 2;
+    mCtx.lineCap = 'round';
+    mCtx.lineJoin = 'round';
+
+    if (lastX !== null && lastY !== null) {
+      mCtx.beginPath();
+      mCtx.moveTo(lastX, lastY);
+      mCtx.lineTo(x, y);
+      mCtx.stroke();
+    } else {
+      mCtx.beginPath();
+      mCtx.arc(x, y, brushRadius, 0, Math.PI * 2);
+      mCtx.fill();
+    }
+
+    lastX = x;
+    lastY = y;
+
+    state.effects[ds.effectId].params[ds.paramKey] = mCvs; // Pass direct canvas for flicker-free active drawing
+    requestRender();
+  };
+
+  area.addEventListener('mousedown', (e) => {
+    if (state.view.maskDrawing.active && e.button === 0) {
+      isDrawing = true;
+      lastX = null;
+      lastY = null;
+      draw(e.clientX, e.clientY);
+    }
+  });
+
+  area.addEventListener('mousemove', (e) => {
+    setIndicator(e.clientX, e.clientY);
+    if (isDrawing) draw(e.clientX, e.clientY);
+  });
+
+  area.addEventListener('mouseleave', () => {
+    indicator.classList.add("d-none");
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (isDrawing) draw(e.clientX, e.clientY);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isDrawing) {
+      isDrawing = false;
+      lastX = null;
+      lastY = null;
+      const ds = state.view.maskDrawing;
+      const mCvs = maskOffscreenCanvases.get(`${ds.effectId}-${ds.paramKey}`);
+      if (mCvs) {
+        state.effects[ds.effectId].params[ds.paramKey] = mCvs.toDataURL(); // Save as string for persistence
+      }
+      Undo.push(`Draw Mask`);
+    }
+  });
+}
+
 const ColorPopover = (() => {
   let openState = null; // { effectId, key, setColor, anchorEl }
   let hue = 120; // 0..360
@@ -1758,6 +2266,16 @@ function applyUndoPanelVisibility() {
   elements.undoResizer.classList.toggle("d-none", !show);
 }
 
+function applyCheckerboardVisibility() {
+  if (!elements.previewArea) return;
+  elements.previewArea.classList.toggle("show-checkerboard", state.view.showCheckerboard);
+}
+
+function applyMaskDrawingCursor() {
+  if (!elements.previewArea) return;
+  elements.previewArea.classList.toggle("is-drawing-mask", state.view.maskDrawing.active);
+}
+
 function persistUndoUi() {
   persistSettings();
 }
@@ -1818,6 +2336,7 @@ function initPanning() {
   let mode = null; // "middle" | "space"
   let lastMoveX = 0;
   let lastMoveY = 0;
+  let isDraggingParam = false;
 
   function begin(e, nextMode) {
     if (!state.layers.length) return;
@@ -1830,12 +2349,50 @@ function initPanning() {
     canvas.classList.add("is-panning");
   }
 
+  function updateParamFromEvent(e) {
+    const rect = canvas.getBoundingClientRect();
+    const rx = clampNumber((e.clientX - rect.left) / rect.width, 0, 1);
+    const ry = clampNumber((e.clientY - rect.top) / rect.height, 0, 1);
+    
+    const effect = EffectRegistry.find(ef => ef.id === state.selectedEffectId);
+    const effectState = state.effects[state.selectedEffectId];
+    
+    const paramX = effect.params?.find(p => p.interactive && p.key.toLowerCase().includes('x'));
+    const paramY = effect.params?.find(p => p.interactive && p.key.toLowerCase().includes('y'));
+    
+    if (paramX) effectState.params[paramX.key] = rx;
+    // Flip Y because DOM is top-0, but our WebGL UV space is bottom-0
+    if (paramY) effectState.params[paramY.key] = 1.0 - ry;
+    
+    renderEffectPanel();
+    requestRender();
+  }
+
   function maybeBegin(e) {
+    if (state.view.maskDrawing.active) return;
+    if (state.view.colorPicker) return;
+
     if (e.button === 1) {
       e.preventDefault();
       begin(e, "middle");
       return;
     }
+
+    // Interactive Parameter Dragging
+    const effect = EffectRegistry.find(ef => ef.id === state.selectedEffectId);
+    const effectState = state.effects[state.selectedEffectId];
+    if (effect && effectState?.enabled && !spaceDown && e.button === 0) {
+      const interactiveX = effect.params?.find(p => p.interactive && p.key.toLowerCase().includes('x'));
+      const interactiveY = effect.params?.find(p => p.interactive && p.key.toLowerCase().includes('y'));
+      
+      if (interactiveX && interactiveY) {
+        isDraggingParam = true;
+        area.style.cursor = "crosshair";
+        updateParamFromEvent(e);
+        return;
+      }
+    }
+
     if (e.button === 0 && spaceDown) {
       e.preventDefault();
       begin(e, "space");
@@ -1845,6 +2402,11 @@ function initPanning() {
   area.addEventListener("mousedown", maybeBegin);
 
   window.addEventListener("mousemove", (e) => {
+    if (isDraggingParam) {
+      updateParamFromEvent(e);
+      return;
+    }
+
     if (active) {
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
@@ -1866,16 +2428,20 @@ function initPanning() {
       lastMoveY = e.clientY;
     }
   });
-
-  window.addEventListener("mouseup", (e) => {
-    if (!active) return;
-    if (mode === "middle" && e.button !== 1) return;
-    if (mode === "space" && e.button !== 0) return;
-    active = false;
-    mode = null;
-    canvas.classList.remove("is-panning");
-    persistSettings();
-  });
+window.addEventListener("mouseup", (e) => {
+  if (isDraggingParam) {
+    isDraggingParam = false;
+    area.style.cursor = "";
+    Undo.push(`Move ${state.selectedEffectId} center`);
+    return;
+  }
+  if (!active) return;
+  if (mode === "middle" && e.button !== 1) return;
+  if (mode === "space" && e.button !== 0) return;
+  active = false;
+  mode = null;
+  canvas.classList.remove("is-panning");
+});
 
   // Prevent autoscroll on middle click
   area.addEventListener("auxclick", (e) => {
@@ -2169,13 +2735,18 @@ elements.ipSizePreset?.addEventListener("change", () => {
 initResizablePanels();
 initMenubarHover();
 initDragDropPreview();
+initErrorModal();
+initAboutModal();
+initImportConfirmModal();
 restoreSettings();
 applyInfoBarVisibility();
 applyUndoPanelVisibility();
+applyCheckerboardVisibility();
 initZoomBar();
 initWheelZoom();
 initPixelHover();
 initColorPicker();
+initMaskDrawing();
 initPanning();
 initUndoPanelResize();
 renderEffectsList();
@@ -2185,6 +2756,8 @@ Undo.render();
 
 elements.undoBtn?.addEventListener("click", () => Undo.undo());
 elements.redoBtn?.addEventListener("click", () => Undo.redo());
+elements.menuUndo?.addEventListener("click", () => Undo.undo());
+elements.menuRedo?.addEventListener("click", () => Undo.redo());
 
 elements.menuToggleInfoBar?.addEventListener("click", () => {
   state.view.showInfoBar = !state.view.showInfoBar;
@@ -2196,6 +2769,20 @@ elements.menuToggleUndo?.addEventListener("click", () => {
   state.view.showUndoPanel = !state.view.showUndoPanel;
   applyUndoPanelVisibility();
   persistSettings();
+});
+
+elements.menuToggleCheckerboard?.addEventListener("click", () => {
+  state.view.showCheckerboard = !state.view.showCheckerboard;
+  applyCheckerboardVisibility();
+  persistSettings();
+});
+
+elements.menuSoloEffect?.addEventListener("click", () => {
+  if (!state.selectedEffectId) return;
+  const isSolo = state.view.soloEffectId === state.selectedEffectId;
+  state.view.soloEffectId = isSolo ? null : state.selectedEffectId;
+  renderEffectPanel();
+  requestRender();
 });
 
 elements.presetSaveBtn?.addEventListener("click", () => {
@@ -2229,7 +2816,7 @@ try {
         name: parsed.name,
         type: parsed.type,
         size: parsed.size,
-      });
+      }, { skipConfirm: true });
     }
   }
 } catch {

@@ -2,7 +2,10 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const BILATERAL_FRAGMENT = fragmentShaderSource(
-  "uniform float u_radius; uniform float u_sigmaR;",
+  `
+  uniform float u_radius;
+  uniform float u_sigmaR;
+  `,
   `
   vec4 centerColor = sampleLinear(v_uv);
   
@@ -51,7 +54,7 @@ export default defineGpuEffect({
   name: "Bilateral Blur",
   icon: "bi-droplet-half",
   description: "Edge-preserving blur that smooths surfaces while keeping outlines sharp.",
-  controls: [
+  params: [
     { key: "radius", label: "Radius", type: "range", min: 0, max: 10, step: 0.1, unit: "px" },
     { key: "strength", label: "Edge Sharpness", type: "range", min: 0.01, max: 1, step: 0.01 },
   ],

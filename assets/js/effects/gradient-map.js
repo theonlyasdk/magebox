@@ -2,7 +2,12 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const GRADIENT_MAP_FRAGMENT = fragmentShaderSource(
-  "uniform vec3 u_colorLow; uniform vec3 u_colorMid; uniform vec3 u_colorHigh; uniform float u_opacity;",
+  `
+  uniform vec3 u_colorLow;
+  uniform vec3 u_colorMid;
+  uniform vec3 u_colorHigh;
+  uniform float u_opacity;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   float l = luminance(color.rgb);
@@ -24,7 +29,7 @@ export default defineGpuEffect({
   name: "Gradient Map",
   icon: "bi-palette",
   description: "Maps the image luminance to a color gradient.",
-  controls: [
+  params: [
     { key: "colorLow", label: "Shadows", type: "color" },
     { key: "colorMid", label: "Midtones", type: "color" },
     { key: "colorHigh", label: "Highlights", type: "color" },

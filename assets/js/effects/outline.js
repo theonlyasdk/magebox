@@ -2,7 +2,12 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const OUTLINE_FRAGMENT = fragmentShaderSource(
-  "uniform float u_strength; uniform float u_threshold; uniform float u_invert; uniform float u_radius;",
+  `
+  uniform float u_strength;
+  uniform float u_threshold;
+  uniform float u_invert;
+  uniform float u_radius;
+  `,
   `
 vec2 t = u_texelSize * u_radius;
 
@@ -34,7 +39,7 @@ export default defineGpuEffect({
   name: "Outline",
   icon: "bi-bounding-box",
   description: "Detects edges and draws an outline on top of the image.",
-  controls: [
+  params: [
     { key: "strength", label: "Strength", type: "range", min: 0, max: 100, step: 1, unit: "%" },
     { key: "threshold", label: "Threshold", type: "range", min: 0, max: 255, step: 1 },
     { key: "radius", label: "Radius", type: "range", min: 0.1, max: 5, step: 0.1 },

@@ -10,6 +10,7 @@ export function pass(fragmentSource, uniforms = {}, options = {}) {
     fragmentSource,
     uniforms,
     filter: options.filter ?? "linear",
+    luts: options.luts ?? null, // { uniformName: Float32Array(256) }
   };
 }
 

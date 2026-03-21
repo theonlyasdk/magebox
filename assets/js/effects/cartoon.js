@@ -2,7 +2,11 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const CARTOON_FRAGMENT = fragmentShaderSource(
-  "uniform float u_levels; uniform float u_edges; uniform float u_threshold;",
+  `
+  uniform float u_levels;
+  uniform float u_edges;
+  uniform float u_threshold;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   vec3 quantized = floor(color.rgb * max(u_levels - 1.0, 1.0) + 0.5) / max(u_levels - 1.0, 1.0);
@@ -28,7 +32,7 @@ export default defineGpuEffect({
   name: "Cartoon",
   icon: "bi-magic",
   description: "Posterizes colors and adds edge lines for a cartoon look.",
-  controls: [
+  params: [
     { key: "levels", label: "Color levels", type: "range", min: 2, max: 16, step: 1 },
     { key: "edges", label: "Edges", type: "range", min: 0, max: 100, step: 1, unit: "%" },
     { key: "threshold", label: "Edge threshold", type: "range", min: 0, max: 255, step: 1 },

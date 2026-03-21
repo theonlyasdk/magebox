@@ -15,7 +15,7 @@ export default defineGpuEffect({
   name: "Grayscale",
   icon: "bi-droplet-half",
   description: "Converts colors to grayscale.",
-  controls: [
+  params: [
     { key: "amount", label: "Amount", type: "range", min: 0, max: 100, step: 1, unit: "%" },
   ],
   defaultParams: { amount: 100 },

@@ -2,7 +2,18 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const ADJUSTMENTS_FRAGMENT = fragmentShaderSource(
-  "uniform float u_brightness; uniform float u_contrast; uniform float u_exposure; uniform float u_saturation; uniform float u_gamma; uniform float u_hue; uniform float u_temperature; uniform float u_tint; uniform float u_sepia; uniform float u_invert;",
+  `
+  uniform float u_brightness;
+  uniform float u_contrast;
+  uniform float u_exposure;
+  uniform float u_saturation;
+  uniform float u_gamma;
+  uniform float u_hue;
+  uniform float u_temperature;
+  uniform float u_tint;
+  uniform float u_sepia;
+  uniform float u_invert;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   vec3 rgb = color.rgb;
@@ -64,7 +75,7 @@ export default defineGpuEffect({
   name: "Adjustments",
   icon: "bi-sliders",
   description: "Basic color and luminance adjustments",
-  controls: [
+  params: [
     { key: "exposure", label: "Exposure", type: "range", min: -4, max: 4, step: 0.01, unit: " EV" },
     { key: "brightness", label: "Brightness", type: "range", min: -1, max: 1, step: 0.01 },
     { key: "contrast", label: "Contrast", type: "range", min: 0, max: 3, step: 0.01 },

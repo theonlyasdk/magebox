@@ -2,7 +2,11 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const BLOOM_FRAGMENT = fragmentShaderSource(
-  "uniform float u_threshold; uniform float u_intensity; uniform float u_radius;",
+  `
+  uniform float u_threshold;
+  uniform float u_intensity;
+  uniform float u_radius;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   vec3 result = color.rgb;
@@ -41,7 +45,7 @@ export default defineGpuEffect({
   name: "Bloom",
   icon: "bi-brightness-high",
   description: "Adds a glow effect to bright areas of the image.",
-  controls: [
+  params: [
     { key: "threshold", label: "Threshold", type: "range", min: 0, max: 1, step: 0.01 },
     { key: "intensity", label: "Intensity", type: "range", min: 0, max: 5, step: 0.05 },
     { key: "radius", label: "Radius", type: "range", min: 1, max: 10, step: 0.1, unit: "px" },

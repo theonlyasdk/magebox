@@ -2,7 +2,11 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const COLOR_ISOLATION_FRAGMENT = fragmentShaderSource(
-  "uniform vec3 u_target; uniform float u_tolerance; uniform float u_softness;",
+  `
+  uniform vec3 u_target;
+  uniform float u_tolerance;
+  uniform float u_softness;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   vec3 targetHsl = rgb2hsl(u_target);
@@ -29,7 +33,7 @@ export default defineGpuEffect({
   name: "Color Isolation",
   icon: "bi-palette",
   description: "Keeps a selected color, makes everything else black & white.",
-  controls: [
+  params: [
     { key: "color", label: "Target color", type: "color" },
     { key: "tolerance", label: "Tolerance", type: "range", min: 0, max: 180, step: 1, unit: "°" },
     { key: "softness", label: "Softness", type: "range", min: 0, max: 100, step: 1, unit: "%" },

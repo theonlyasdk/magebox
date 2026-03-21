@@ -78,7 +78,7 @@ export default defineGpuEffect({
   name: "Noise",
   icon: "bi-reception-4",
   description: "Adds different types of procedural noise and grain.",
-  controls: [
+  params: [
     {
       key: "type",
       label: "Type",

@@ -2,8 +2,12 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const getWarpFragment = (mathFunc) => fragmentShaderSource(
-  "uniform float u_amplitude; uniform float u_frequency; uniform float u_axis;",
-  `
+    `
+    uniform float u_amplitude;
+    uniform float u_frequency;
+    uniform float u_axis;
+    `,
+    `
   vec2 uv = v_uv;
   float tau = 6.28318530718;
   float x = v_uv.x;
@@ -38,7 +42,11 @@ const getWarpFragmentV2 = (mathFunc) => {
     .replace(/(?<![\d.])(\d+)(?![\d.])/g, "$1.0");
 
   return fragmentShaderSource(
-    "uniform float u_amplitude; uniform float u_frequency; uniform float u_axis;",
+    `
+    uniform float u_amplitude;
+    uniform float u_frequency;
+    uniform float u_axis;
+    `,
     `
   vec2 uv = v_uv;
   float tau = 6.28318530718;
@@ -66,7 +74,7 @@ export default defineGpuEffect({
   name: "Warp",
   icon: "bi-arrow-repeat",
   description: "Waves the image using mathematical warping functions.",
-  controls: [
+  params: [
     { key: "amplitude", label: "Amplitude", type: "range", min: 0, max: 100, step: 1, unit: "px" },
     { key: "frequency", label: "Frequency", type: "range", min: 0.1, max: 10, step: 0.1 },
     {

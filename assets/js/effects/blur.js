@@ -2,7 +2,11 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const BLUR_FRAGMENT = fragmentShaderSource(
-  "uniform vec2 u_direction; uniform float u_radius; uniform float u_kernel[21];",
+  `
+  uniform vec2 u_direction;
+  uniform float u_radius;
+  uniform float u_kernel[21];
+  `,
   `
   float radius = clamp(u_radius, 0.0, 20.0);
   vec2 stepUv = u_direction * u_texelSize;
@@ -46,7 +50,7 @@ export default defineGpuEffect({
   name: "Blur",
   icon: "bi-droplet",
   description: "Softens the image using a blur filter.",
-  controls: [
+  params: [
     { key: "radius", label: "Radius", type: "range", min: 0, max: 20, step: 0.5, unit: "px" },
   ],
   defaultParams: { radius: 0 },

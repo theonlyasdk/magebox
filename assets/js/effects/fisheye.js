@@ -2,7 +2,10 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const FISHEYE_FRAGMENT = fragmentShaderSource(
-  "uniform float u_strength; uniform float u_radiusPct;",
+  `
+  uniform float u_strength;
+  uniform float u_radiusPct;
+  `,
   `
   vec2 center = vec2(0.5);
   vec2 aspect = vec2(u_inputSize.x / min(u_inputSize.x, u_inputSize.y), u_inputSize.y / min(u_inputSize.x, u_inputSize.y));
@@ -27,7 +30,7 @@ export default defineGpuEffect({
   name: "Fisheye",
   icon: "bi-eye",
   description: "Applies a fisheye lens distortion.",
-  controls: [
+  params: [
     { key: "strength", label: "Strength", type: "range", min: -1, max: 1, step: 0.05 },
     { key: "radius", label: "Radius", type: "range", min: 10, max: 200, step: 1, unit: "%" },
   ],

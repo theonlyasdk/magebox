@@ -11,13 +11,13 @@ Go to https://theonlyasdk.github.io/magebox to use the app for free!
 2. Export a default object with:
    - `id`, `name`, `icon`, `description`
    - `defaultParams`
-   - `controls` (range/select/color definitions)
+   - `params` (range/select/color definitions)
    - `gl` with `passes(params, context)` returning shader passes
 3. Import and register it in `assets/js/effects/registry.js`.
 
-### WebGL effect contract
+### WebGL Implementation
 
-Effects now run through the shared WebGL pipeline in `assets/js/gl/webgl-renderer.js`.
+Effects run through the shared WebGL pipeline in `assets/js/gl/webgl-renderer.js`.
 
 Use `assets/js/gl/effect-api.js`:
 
@@ -38,7 +38,7 @@ export default defineGpuEffect({
   name: "Example",
   icon: "bi-stars",
   description: "Example GPU effect.",
-  controls: [{ key: "amount", label: "Amount", type: "range", min: 0, max: 2, step: 0.1 }],
+  params: [{ key: "amount", label: "Amount", type: "range", min: 0, max: 2, step: 0.1 }],
   defaultParams: { amount: 1 },
   gl: {
     isNeutral(params) {
@@ -61,4 +61,4 @@ The renderer injects:
 Common GLSL helpers live in `assets/js/gl/shader-chunks.js`.
 
 ## License
-Licensed under the [Mozilla Public License Version 2](LICENSE)
+Licensed under the [Mozilla Public License Version 2.0](LICENSE)

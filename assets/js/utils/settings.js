@@ -4,6 +4,8 @@ const defaults = {
   theme: "dark",
   showInfoBar: true,
   showUndoPanel: false,
+  showCheckerboard: true,
+  importAction: "ask", // "ask" | "resize" | "keep"
   zoomFactor: 1,
   panX: 0,
   panY: 0,

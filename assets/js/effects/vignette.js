@@ -2,7 +2,11 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const VIGNETTE_FRAGMENT = fragmentShaderSource(
-  "uniform float u_intensity; uniform float u_smoothness; uniform float u_opacity;",
+  `
+  uniform float u_intensity;
+  uniform float u_smoothness;
+  uniform float u_opacity;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   vec2 uv = v_uv * 2.0 - 1.0;
@@ -19,7 +23,7 @@ export default defineGpuEffect({
   name: "Vignette",
   icon: "bi-circle",
   description: "Darkens the edges of the image or canvas.",
-  controls: [
+  params: [
     {
       key: "resolutionMode",
       label: "Mode",

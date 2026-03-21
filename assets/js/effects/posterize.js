@@ -2,7 +2,9 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const POSTERIZE_FRAGMENT = fragmentShaderSource(
-  "uniform float u_levels;",
+  `
+  uniform float u_levels;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   vec3 rgb = color.rgb;
@@ -16,7 +18,7 @@ export default defineGpuEffect({
   name: "Posterize",
   icon: "bi-layers-half",
   description: "Reduces the number of colors in the image.",
-  controls: [
+  params: [
     { key: "levels", label: "Levels", type: "range", min: 2, max: 255, step: 1 },
   ],
   defaultParams: { levels: 4 },

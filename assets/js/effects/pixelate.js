@@ -15,7 +15,7 @@ export default defineGpuEffect({
   name: "Pixelate",
   icon: "bi-grid-3x3",
   description: "Reduces the image resolution for a blocky, pixelated look.",
-  controls: [
+  params: [
     { key: "size", label: "Pixel Size", type: "range", min: 1, max: 100, step: 1, unit: "px" },
   ],
   defaultParams: { size: 8 },

@@ -2,7 +2,14 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const REPEAT_FRAGMENT = fragmentShaderSource(
-  "uniform float u_scale; uniform vec2 u_offset; uniform float u_randomise; uniform float u_featherAmount; uniform float u_featherRadius; uniform float u_alphaFeather;",
+  `
+  uniform float u_scale;
+  uniform vec2 u_offset;
+  uniform float u_randomise;
+  uniform float u_featherAmount;
+  uniform float u_featherRadius;
+  uniform float u_alphaFeather;
+  `,
   `
   vec2 tiledPos = v_uv * u_outputSize / max(u_scale, 0.0001);
   vec2 basePos = tiledPos - u_offset;
@@ -62,7 +69,7 @@ export default defineGpuEffect({
   name: "Repeat",
   icon: "bi-grid-3x3-gap",
   description: "Repeats (tiles) the image by wrapping pixels with an offset.",
-  controls: [
+  params: [
     {
       key: "scale",
       label: "Scale",

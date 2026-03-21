@@ -2,7 +2,11 @@ import { defineGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const GREEN_SCREEN_FRAGMENT = fragmentShaderSource(
-  "uniform vec3 u_target; uniform float u_tolerance; uniform float u_softness;",
+  `
+  uniform vec3 u_target;
+  uniform float u_tolerance;
+  uniform float u_softness;
+  `,
   `
   vec4 color = sampleLinear(v_uv);
   vec3 keyHsv = rgb2hsv(u_target);
@@ -28,7 +32,7 @@ export default defineGpuEffect({
   name: "Green Screen",
   icon: "bi-person-bounding-box",
   description: "Keys out a chosen color and makes it transparent (chroma key).",
-  controls: [
+  params: [
     { key: "color", label: "Key color", type: "color" },
     { key: "tolerance", label: "Tolerance", type: "range", min: 0, max: 180, step: 1, unit: "°" },
     { key: "softness", label: "Softness", type: "range", min: 0, max: 100, step: 1, unit: "%" },

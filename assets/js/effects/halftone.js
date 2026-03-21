@@ -47,7 +47,7 @@ export default defineGpuEffect({
   name: "Halftone",
   icon: "bi-grid-3x3-gap-fill",
   description: "Simulates a vintage printed halftone pattern.",
-  controls: [
+  params: [
     {
       key: "mode",
       label: "Mode",
