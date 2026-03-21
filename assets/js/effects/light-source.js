@@ -22,7 +22,8 @@ const LIGHT_FRAGMENT = fragmentShaderSource(
     float d = distance(v_uv * aspect, lData.xy * aspect);
     
     // Smooth radial falloff
-    float falloff = smoothstep(lData.z, 0.0, d);
+    float falloff = 1.0 - smoothstep(0.0, lData.z, d);
+    falloff *= falloff;
     
     // Additive glow
     result += lCol * falloff * lData.w;

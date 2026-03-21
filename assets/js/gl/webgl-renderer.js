@@ -284,12 +284,29 @@ export class WebGLRenderer {
     const loc = this.#uniformLocation(record, name);
     if (!loc) return;
 
+    const lowerName = name.toLowerCase();
+    const uploadTypedArray = (typedArray) => {
+      if (typedArray.length % 3 === 0 && (lowerName.includes("color") || lowerName.includes("col"))) {
+        gl.uniform3fv(loc, typedArray);
+        return true;
+      }
+      if (typedArray.length % 4 === 0 && !lowerName.includes("kernel") && !lowerName.includes("weight")) {
+        gl.uniform4fv(loc, typedArray);
+        return true;
+      }
+      if (typedArray.length % 2 === 0 && lowerName.includes("dir")) {
+        gl.uniform2fv(loc, typedArray);
+        return true;
+      }
+      gl.uniform1fv(loc, typedArray);
+      return true;
+    };
+
     if (typeof value === "boolean") {
       gl.uniform1i(loc, value ? 1 : 0);
       return;
     }
     if (typeof value === "number") {
-      const lowerName = name.toLowerCase();
       if (
         Number.isInteger(value) &&
         (lowerName.includes("type") ||
@@ -304,11 +321,7 @@ export class WebGLRenderer {
       return;
     }
     if (value instanceof Float32Array) {
-      if (name.toLowerCase().includes("vec4") || name.toLowerCase().includes("regions")) {
-        gl.uniform4fv(loc, value);
-      } else {
-        gl.uniform1fv(loc, value);
-      }
+      uploadTypedArray(value);
       return;
     }
     if (Array.isArray(value)) {
@@ -316,11 +329,7 @@ export class WebGLRenderer {
       else if (value.length === 3) gl.uniform3f(loc, value[0], value[1], value[2]);
       else if (value.length === 4) gl.uniform4f(loc, value[0], value[1], value[2], value[3]);
       else if (value.length > 4) {
-        if (name.toLowerCase().includes("vec4") || name.toLowerCase().includes("regions")) {
-          gl.uniform4fv(loc, new Float32Array(value));
-        } else {
-          gl.uniform1fv(loc, new Float32Array(value));
-        }
+        uploadTypedArray(new Float32Array(value));
       }
     }
   }
