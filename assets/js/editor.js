@@ -76,6 +76,9 @@ const elements = {
   presetSaveBtn: document.getElementById("preset-save-btn"),
   presetsList: document.getElementById("presets-list"),
   presetsEmpty: document.getElementById("presets-empty"),
+  presetExportBtn: document.getElementById("preset-export-btn"),
+  presetImportBtn: document.getElementById("preset-import-btn"),
+  presetImportFile: document.getElementById("preset-import-file"),
 
   importConfirmModalEl: document.getElementById("import-confirm-modal"),
   importDontShow: document.getElementById("import-dont-show"),
@@ -173,7 +176,8 @@ const Undo = (() => {
   const entries = [];
   let index = -1;
   let restoring = false;
-  const MAX = 200;
+  const MAX = 100;
+  const UNDO_KEY = "magebox:undo:v1";
 
   function snapshot() {
     return JSON.parse(
@@ -187,10 +191,45 @@ const Undo = (() => {
 
   function applySnapshot(snap) {
     restoring = true;
-    state.effects = snap.effects;
+    
+    // Merge restored effects with defaults to handle new effects added to the code
+    const mergedEffects = {};
+    for (const effect of EffectRegistry) {
+      mergedEffects[effect.id] = snap.effects[effect.id] || {
+        enabled: false,
+        params: JSON.parse(JSON.stringify(effect.defaultParams ?? {})),
+      };
+    }
+    
+    state.effects = mergedEffects;
     state.settings = snap.settings;
     state.selectedEffectId = snap.selectedEffectId;
     restoring = false;
+  }
+
+  function saveToStorage() {
+    if (restoring) return;
+    try {
+      localStorage.setItem(UNDO_KEY, JSON.stringify({ entries, index }));
+    } catch {
+      // ignore
+    }
+  }
+
+  function loadFromStorage() {
+    try {
+      const raw = localStorage.getItem(UNDO_KEY);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed.entries)) return false;
+      entries.length = 0;
+      entries.push(...parsed.entries);
+      index = Number(parsed.index);
+      if (entries[index]) applySnapshot(entries[index].snap);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function push(label) {
@@ -207,10 +246,16 @@ const Undo = (() => {
     });
     if (entries.length > MAX) entries.shift();
     index = entries.length - 1;
+    saveToStorage();
     render();
   }
 
   function reset(label = "Ready") {
+    if (loadFromStorage()) {
+      afterRestore();
+      render();
+      return;
+    }
     entries.length = 0;
     index = -1;
     push(label);
@@ -226,6 +271,7 @@ const Undo = (() => {
   function restoreAt(nextIndex) {
     index = nextIndex;
     applySnapshot(entries[index].snap);
+    saveToStorage();
     afterRestore();
     render();
   }
@@ -677,6 +723,7 @@ function renderEffectsList() {
 
   for (const effect of EffectRegistry) {
     const effectState = state.effects[effect.id];
+    if (!effectState) continue;
     const isActive = state.selectedEffectId === effect.id;
 
     const button = document.createElement("button");
@@ -698,6 +745,15 @@ function renderEffectsList() {
 
     const toggle = () => {
       effectState.enabled = !effectState.enabled;
+      
+      // Ensure defaults are fully applied when first turning on an effect
+      if (effectState.enabled) {
+        effectState.params = {
+          ...JSON.parse(JSON.stringify(effect.defaultParams ?? {})),
+          ...effectState.params
+        };
+      }
+
       requestRender();
       renderEffectsList();
       if (state.selectedEffectId === effect.id) {
@@ -1098,6 +1154,21 @@ function renderEffectPanel() {
         wrapper.appendChild(sizeLabel);
         wrapper.appendChild(sizeInput);
       }
+    } else if (param.type === "lights") {
+      const editorWrap = document.createElement("div");
+      editorWrap.className = "mt-2";
+      
+      new MageboxUI.LightsEditor({
+        container: editorWrap,
+        lights: Array.isArray(value) ? value : (param.default ?? []),
+        onChange: (newLights) => {
+          effectState.params[key] = newLights.map(l => ({ ...l }));
+          ensureEnabled();
+          requestRender();
+        }
+      });
+      
+      wrapper.appendChild(editorWrap);
     } else if (param.type === "regions") {
       const editorWrap = document.createElement("div");
       editorWrap.className = "mt-2";
@@ -1593,7 +1664,14 @@ function setEffectsConfig(config) {
     // Keep only effects we know about, merge defaults for missing params.
     for (const effect of EffectRegistry) {
       const incoming = config.effects[effect.id];
-      if (!incoming) continue;
+      if (!incoming) {
+        // Reset to default if not in config
+        state.effects[effect.id] = {
+          enabled: false,
+          params: JSON.parse(JSON.stringify(effect.defaultParams ?? {})),
+        };
+        continue;
+      }
       state.effects[effect.id].enabled = Boolean(incoming.enabled);
       state.effects[effect.id].params = {
         ...JSON.parse(JSON.stringify(effect.defaultParams ?? {})),
@@ -1644,32 +1722,53 @@ function renderPresetsList() {
 
     const actions = document.createElement("div");
     actions.className = "btn-group btn-group-sm";
+
     const loadBtn = document.createElement("button");
     loadBtn.type = "button";
     loadBtn.className = "btn btn-outline-primary";
-    loadBtn.textContent = "Load";
+    loadBtn.innerHTML = '<i class="bi bi-folder2-open"></i>';
+    loadBtn.title = "Load";
     loadBtn.addEventListener("click", () => {
       setEffectsConfig(store.presets[name]);
       Undo.push(`Load preset: ${name}`);
       presetsModal?.hide();
     });
 
+    const downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.className = "btn btn-outline-secondary";
+    downloadBtn.innerHTML = '<i class="bi bi-download"></i>';
+    downloadBtn.title = "Download as JSON";
+    downloadBtn.addEventListener("click", () => {
+      const data = { version: 1, presets: { [name]: store.presets[name] } };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `magebox-preset-${name.toLowerCase().replace(/\s+/g, '-')}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "btn btn-outline-danger";
-    delBtn.textContent = "Delete";
+    delBtn.innerHTML = '<i class="bi bi-trash"></i>';
+    delBtn.title = "Delete";
     delBtn.addEventListener("click", () => {
-      delete store.presets[name];
-      savePresetsStore(store);
-      renderPresetsList();
+      if (confirm(`Are you sure you want to delete the preset "${name}"?`)) {
+        delete store.presets[name];
+        savePresetsStore(store);
+        renderPresetsList();
+      }
     });
 
     actions.appendChild(loadBtn);
+    actions.appendChild(downloadBtn);
     actions.appendChild(delBtn);
     row.appendChild(actions);
     elements.presetsList.appendChild(row);
-  }
-}
+  }}
 
 function openPresets(mode) {
   if (!presetsModal) return;
@@ -1677,9 +1776,9 @@ function openPresets(mode) {
     elements.presetsModalTitle.textContent = mode === "save" ? "Save Effects" : "Load Effects";
   }
   if (elements.presetsSaveArea) elements.presetsSaveArea.style.display = mode === "save" ? "" : "none";
-  if (elements.presetsLoadArea) elements.presetsLoadArea.style.display = "";
+  if (elements.presetsLoadArea) elements.presetsLoadArea.style.display = mode === "load" ? "" : "none";
   if (elements.presetName) elements.presetName.value = "";
-  renderPresetsList();
+  if (mode === "load") renderPresetsList();
   presetsModal.show();
 }
 
@@ -2783,6 +2882,43 @@ elements.menuSoloEffect?.addEventListener("click", () => {
   state.view.soloEffectId = isSolo ? null : state.selectedEffectId;
   renderEffectPanel();
   requestRender();
+});
+
+elements.presetExportBtn?.addEventListener("click", () => {
+  const store = loadPresetsStore();
+  const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `magebox-presets-${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+elements.presetImportBtn?.addEventListener("click", () => {
+  elements.presetImportFile?.click();
+});
+
+elements.presetImportFile?.addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const imported = JSON.parse(ev.target.result);
+      if (imported.presets) {
+        const store = loadPresetsStore();
+        store.presets = { ...store.presets, ...imported.presets };
+        savePresetsStore(store);
+        renderPresetsList();
+        alert(`Successfully imported ${Object.keys(imported.presets).length} presets.`);
+      }
+    } catch (err) {
+      alert("Failed to import presets: Invalid JSON file.");
+    }
+    e.target.value = "";
+  };
+  reader.readAsText(file);
 });
 
 elements.presetSaveBtn?.addEventListener("click", () => {

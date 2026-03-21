@@ -15,11 +15,9 @@ Go to https://theonlyasdk.github.io/magebox to use the app for free!
    - `gl` with `passes(params, context)` returning shader passes
 3. Import and register it in `assets/js/effects/registry.js`.
 
-### WebGL Implementation
+### Example effect
 
-Effects run through the shared WebGL pipeline in `assets/js/gl/webgl-renderer.js`.
-
-Use `assets/js/gl/effect-api.js`:
+Effects are run through the shared WebGL pipeline in `assets/js/gl/webgl-renderer.js`.
 
 ```js
 import { defineGpuEffect, pass } from "../gl/effect-api.js";
