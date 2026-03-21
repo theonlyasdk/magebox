@@ -17,6 +17,7 @@ import grayscale from "./grayscale.js";
 import greenScreen from "./green-screen.js";
 import halftone from "./halftone.js";
 import lightSource from "./light-source.js";
+import liquidMelt from "./liquid-melt.js";
 import motionTrail from "./motion-trail.js";
 import noise from "./noise.js";
 import outline from "./outline.js";
@@ -53,6 +54,7 @@ export const EffectRegistry = [
   greenScreen,
   halftone,
   lightSource,
+  liquidMelt,
   motionTrail,
   noise,
   outline,
