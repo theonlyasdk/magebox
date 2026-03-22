@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const EXPLODE_HEADER = `
@@ -123,7 +123,7 @@ const EXPLODE_BODY = `
 
 const EXPLODE_FRAGMENT = fragmentShaderSource(EXPLODE_HEADER, EXPLODE_BODY);
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "explode",
   name: "Explode",
   icon: "bi-patch-exclamation",
@@ -170,7 +170,7 @@ export default defineGpuEffect({
     centerY: 0.5, 
     seed: 0 
   },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amount ?? 0) <= 0;
     },

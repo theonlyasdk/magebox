@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const VIGNETTE_FRAGMENT = fragmentShaderSource(
@@ -18,7 +18,7 @@ const VIGNETTE_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "vignette",
   name: "Vignette",
   icon: "bi-circle",
@@ -38,7 +38,7 @@ export default defineGpuEffect({
     { key: "opacity", label: "Opacity", type: "range", min: 0, max: 1, step: 0.01 },
   ],
   defaultParams: { resolutionMode: "canvas", intensity: 1.0, smoothness: 0.5, opacity: 1.0 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.opacity ?? 1.0) <= 0;
     },

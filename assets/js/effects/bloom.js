@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const BLOOM_FRAGMENT = fragmentShaderSource(
@@ -40,7 +40,7 @@ const BLOOM_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "bloom",
   name: "Bloom",
   icon: "bi-brightness-high",
@@ -51,7 +51,7 @@ export default defineGpuEffect({
     { key: "radius", label: "Radius", type: "range", min: 1, max: 10, step: 0.1, unit: "px" },
   ],
   defaultParams: { threshold: 0.6, intensity: 1.0, radius: 2.0 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.intensity ?? 1) <= 0;
     },

@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const FRESNEL_FRAGMENT = fragmentShaderSource(
@@ -37,7 +37,7 @@ const FRESNEL_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "fresnel",
   name: "Fresnel Rim Light",
   icon: "bi-sun",
@@ -58,7 +58,7 @@ export default defineGpuEffect({
     depth: 10.0,
     thickness: 2.0
   },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.intensity ?? 0) <= 0;
     },

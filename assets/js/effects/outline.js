@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const OUTLINE_FRAGMENT = fragmentShaderSource(
@@ -34,7 +34,7 @@ gl_FragColor = vec4(result, 1.0);
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "outline",
   name: "Outline",
   icon: "bi-bounding-box",
@@ -46,7 +46,7 @@ export default defineGpuEffect({
     { key: "invert", label: "Invert", type: "range", min: 0, max: 1, step: 1 },
   ],
   defaultParams: { strength: 70, threshold: 40, radius: 1, invert: 0 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.strength ?? 0) <= 0;
     },

@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const REPEAT_FRAGMENT = fragmentShaderSource(
@@ -64,7 +64,7 @@ const REPEAT_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "repeat",
   name: "Repeat",
   icon: "bi-grid-3x3-gap",
@@ -88,7 +88,7 @@ export default defineGpuEffect({
     { key: "alphaFeather", label: "Alpha Feather", type: "range", min: 0, max: 0.5, step: 0.01 },
   ],
   defaultParams: { scale: 1, offsetX: 0, offsetY: 0, randomise: 0, featherAmount: 1, featherRadius: 1, alphaFeather: 0 },
-  gl: {
+  render: {
     isNeutral(params) {
       const scale = Number(params.scale ?? 1);
       const ox = Number(params.offsetX ?? 0);

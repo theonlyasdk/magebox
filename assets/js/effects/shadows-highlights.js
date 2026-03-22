@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const SH_FRAGMENT = fragmentShaderSource(
@@ -40,7 +40,7 @@ const SH_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "shadows-highlights",
   name: "Shadows & Highlights",
   icon: "bi-circle-half",
@@ -51,7 +51,7 @@ export default defineGpuEffect({
     { key: "radius", label: "Range Radius", type: "range", min: 1, max: 20, step: 0.5, unit: "px" },
   ],
   defaultParams: { shadows: 0.3, highlights: 0.2, radius: 10 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.shadows ?? 0) <= 0 && Number(params.highlights ?? 0) <= 0;
     },

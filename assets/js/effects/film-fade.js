@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const FILM_FRAGMENT = fragmentShaderSource(
@@ -29,7 +29,7 @@ const FILM_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "film-fade",
   name: "Film Fade",
   icon: "bi-camera-reels",
@@ -44,7 +44,7 @@ export default defineGpuEffect({
     tint: "#32535e", // Classic cinematic teal tint
     saturation: 0.8 
   },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.fade ?? 0) <= 0 && Number(params.saturation ?? 1) === 1;
     },

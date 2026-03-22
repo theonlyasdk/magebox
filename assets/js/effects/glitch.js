@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const GLITCH_HEADER = `
@@ -51,7 +51,7 @@ const GLITCH_BODY = `
 
 const GLITCH_FRAGMENT = fragmentShaderSource(GLITCH_HEADER, GLITCH_BODY);
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "glitch",
   name: "Glitch",
   icon: "bi-lightning-charge",
@@ -63,7 +63,7 @@ export default defineGpuEffect({
     { key: "seed", label: "Seed", type: "range", min: 0, max: 100, step: 1 },
   ],
   defaultParams: { amount: 0.3, split: 0.4, shift: 0.2, seed: 0 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amount ?? 0) <= 0;
     },

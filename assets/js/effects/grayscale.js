@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const GRAYSCALE_FRAGMENT = fragmentShaderSource(
@@ -10,7 +10,7 @@ const GRAYSCALE_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "grayscale",
   name: "Grayscale",
   icon: "bi-droplet-half",
@@ -19,7 +19,7 @@ export default defineGpuEffect({
     { key: "amount", label: "Amount", type: "range", min: 0, max: 100, step: 1, unit: "%" },
   ],
   defaultParams: { amount: 100 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amount ?? 0) <= 0;
     },

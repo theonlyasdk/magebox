@@ -17,6 +17,17 @@ const COPY_FRAGMENT = fragmentShaderSource(
 `,
 );
 
+const PLACE_FRAGMENT = fragmentShaderSource(
+  "",
+  `
+  if (v_uv.x < 0.0 || v_uv.y < 0.0 || v_uv.x > 1.0 || v_uv.y > 1.0) {
+    gl_FragColor = vec4(0.0);
+    return;
+  }
+  gl_FragColor = sampleLinear(v_uv);
+`,
+);
+
 const RESIZE_BICUBIC_FRAGMENT = fragmentShaderSource(
   `
   vec4 cubic(float v) {
@@ -117,6 +128,11 @@ function createGlContext(canvas) {
       preserveDrawingBuffer: true,
     }) || canvas.getContext("experimental-webgl")
   );
+}
+
+function clampSize(value) {
+  const n = Math.round(Number(value) || 0);
+  return Math.max(1, n);
 }
 
 export class WebGLRenderer {
@@ -228,6 +244,8 @@ export class WebGLRenderer {
   }
 
   #getPool(width, height) {
+    width = clampSize(width);
+    height = clampSize(height);
     const key = `${width}x${height}`;
     if (this.targetPools.has(key)) return this.targetPools.get(key);
 
@@ -392,8 +410,11 @@ export class WebGLRenderer {
     return [{ fragment: COPY_FRAGMENT, uniforms: {}, filter: interpolation === "nearest" ? "nearest" : "linear" }];
   }
 
-  renderToCanvas({ layers, effects, width, height, previewSampling = "linear", interpolation = "bilinear", targetCanvas, resizeMethod = "fill" }) {
+  renderToCanvas({ layers, effects, width, height, previewSampling = "linear", interpolation = "bilinear", targetCanvas }) {
     if (!layers || layers.length === 0 || !targetCanvas) return;
+
+    width = clampSize(width);
+    height = clampSize(height);
 
     const gl = this.gl;
     
@@ -405,16 +426,21 @@ export class WebGLRenderer {
     
     // For now, we only support one layer, so we just use the first one.
     const layer = layers[0];
-    const image = layer.image;
+    const image = layer?.image;
+    if (!image) return;
     
     const sourceTexture = this.#bindSourceTexture(image, previewSampling === "nearest" ? "nearest" : "linear");
 
     let currentTexture = sourceTexture;
-    let currentSize = [image.naturalWidth || image.width, image.naturalHeight || image.height];
+    let currentSize = [clampSize(image.naturalWidth || image.width), clampSize(image.naturalHeight || image.height)];
     let targetIndex = 0;
+    const layerWidth = clampSize(layer?.width || image.naturalWidth || image.width);
+    const layerHeight = clampSize(layer?.height || image.naturalHeight || image.height);
+    const layerX = Number(layer?.x ?? 0);
+    const layerY = Number(layer?.y ?? 0);
 
     // Split effects into those applied at source resolution and those applied at target resolution
-    const enabledEffects = effects.filter((entry) => entry.enabled && entry.effect?.gl);
+    const enabledEffects = effects.filter((entry) => entry.enabled && entry.effect?.render);
     
     const repeatIdx = enabledEffects.findIndex(e => e.effect.id === 'repeat');
     const repeatEffect = repeatIdx === -1 ? null : enabledEffects[repeatIdx];
@@ -424,6 +450,10 @@ export class WebGLRenderer {
 
     enabledEffects.forEach((entry, idx) => {
       if (entry.effect.id === 'repeat') return; // Handled separately as transition
+      if (entry.effect.id === 'transform' || entry.effect.id === 'drop-shadow') {
+        targetEffects.push(entry);
+        return;
+      }
 
       const preferred = entry.params?.resolutionMode; // "layer" or "canvas"
       
@@ -446,7 +476,7 @@ export class WebGLRenderer {
       const pool = this.#getPool(currentSize[0], currentSize[1]);
       for (const entry of sourceEffects) {
         const context = { inputSize: currentSize, outputSize: currentSize };
-        const passes = entry.effect.gl.passes(entry.params, context) ?? [];
+        const passes = entry.effect.render.passes(entry.params, context) ?? [];
         for (const pass of passes) {
           this.#drawPass(
             pass.fragmentSource,
@@ -469,7 +499,7 @@ export class WebGLRenderer {
     const canvasPool = this.#getPool(width, height);
     if (repeatEffect) {
       const context = { inputSize: currentSize, outputSize: [width, height] };
-      const passes = repeatEffect.effect.gl.passes(repeatEffect.params, context) ?? [];
+      const passes = repeatEffect.effect.render.passes(repeatEffect.params, context) ?? [];
       for (const pass of passes) {
         this.#drawPass(
           pass.fragmentSource,
@@ -488,23 +518,12 @@ export class WebGLRenderer {
       }
     } else {
       const resizePasses = this.#resizePasses(interpolation);
-      let firstPassUvTransform = [0, 0, 1, 1];
-      if (resizeMethod === "fill") {
-        const imgAspect = currentSize[0] / currentSize[1];
-        const targetAspect = width / height;
-        if (imgAspect > targetAspect) {
-          const scaleX = targetAspect / imgAspect;
-          firstPassUvTransform = [(1 - scaleX) / 2, 0, scaleX, 1];
-        } else {
-          const scaleY = imgAspect / targetAspect;
-          firstPassUvTransform = [0, (1 - scaleY) / 2, 1, scaleY];
-        }
-      } else {
-          // 'none' or independent placement - for now just draw at top left/natural size
-          const scaleX = width / currentSize[0];
-          const scaleY = height / currentSize[1];
-          firstPassUvTransform = [0, 0, scaleX, scaleY];
-      }
+      const firstPassUvTransform = [
+        -layerX / layerWidth,
+        -layerY / layerHeight,
+        width / layerWidth,
+        height / layerHeight,
+      ];
 
       for (let i = 0; i < resizePasses.length; i++) {
         const pass = resizePasses[i];
@@ -512,7 +531,7 @@ export class WebGLRenderer {
         if (i === 0) passUniforms.u_uvTransform = firstPassUvTransform;
 
         this.#drawPass(
-          pass.fragment,
+          i === 0 ? PLACE_FRAGMENT : pass.fragment,
           currentTexture,
           currentSize,
           [width, height],
@@ -530,7 +549,7 @@ export class WebGLRenderer {
     if (targetEffects.length > 0) {
       for (const entry of targetEffects) {
         const context = { inputSize: currentSize, outputSize: [width, height] };
-        const passes = entry.effect.gl.passes(entry.params, context) ?? [];
+        const passes = entry.effect.render.passes(entry.params, context) ?? [];
         for (const pass of passes) {
           this.#drawPass(
             pass.fragmentSource,

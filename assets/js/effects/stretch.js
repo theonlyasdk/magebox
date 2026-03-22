@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const STRETCH_FRAGMENT = fragmentShaderSource(
@@ -33,7 +33,7 @@ const STRETCH_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "stretch",
   name: "Directional Stretch",
   icon: "bi-arrows-expand",
@@ -45,7 +45,7 @@ export default defineGpuEffect({
     { key: "centerY", label: "Center Y", type: "range", min: 0, max: 1, step: 0.01, interactive: true },
   ],
   defaultParams: { amount: 2.0, angle: 0, centerX: 0.5, centerY: 0.5 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amount ?? 1) === 1;
     },

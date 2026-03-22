@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const PIXELATE_FRAGMENT = fragmentShaderSource(
@@ -10,7 +10,7 @@ const PIXELATE_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "pixelate",
   name: "Pixelate",
   icon: "bi-grid-3x3",
@@ -19,7 +19,7 @@ export default defineGpuEffect({
     { key: "size", label: "Pixel Size", type: "range", min: 1, max: 100, step: 1, unit: "px" },
   ],
   defaultParams: { size: 8 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.size ?? 1) <= 1;
     },

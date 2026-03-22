@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const GREEN_SCREEN_FRAGMENT = fragmentShaderSource(
@@ -27,7 +27,7 @@ function hexToRgb01(hex) {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "greenScreen",
   name: "Green Screen",
   icon: "bi-person-bounding-box",
@@ -38,7 +38,7 @@ export default defineGpuEffect({
     { key: "softness", label: "Softness", type: "range", min: 0, max: 100, step: 1, unit: "%" },
   ],
   defaultParams: { color: "#00ff00", tolerance: 35, softness: 30 },
-  gl: {
+  render: {
     passes(params) {
       return [
         pass(GREEN_SCREEN_FRAGMENT, {

@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const HALFTONE_HEADER = `
@@ -42,7 +42,7 @@ const HALFTONE_BODY = `
 
 const HALFTONE_FRAGMENT = fragmentShaderSource(HALFTONE_HEADER, HALFTONE_BODY);
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "halftone",
   name: "Halftone",
   icon: "bi-grid-3x3-gap-fill",
@@ -62,7 +62,7 @@ export default defineGpuEffect({
     { key: "intensity", label: "Intensity", type: "range", min: 0, max: 2, step: 0.01 },
   ],
   defaultParams: { mode: "0", size: 8, angle: 45, intensity: 1.0 },
-  gl: {
+  render: {
     passes(params) {
       return [
         pass(HALFTONE_FRAGMENT, {

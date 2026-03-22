@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const THRESHOLD_FRAGMENT = fragmentShaderSource(
@@ -13,7 +13,7 @@ const THRESHOLD_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "threshold",
   name: "Threshold",
   icon: "bi-circle-half",
@@ -22,7 +22,7 @@ export default defineGpuEffect({
     { key: "threshold", label: "Threshold", type: "range", min: 0, max: 1, step: 0.01 },
   ],
   defaultParams: { threshold: 0.5 },
-  gl: {
+  render: {
     passes(params) {
       return [
         pass(THRESHOLD_FRAGMENT, {

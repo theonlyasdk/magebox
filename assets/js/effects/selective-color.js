@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const SELECTIVE_FRAGMENT = fragmentShaderSource(
@@ -58,7 +58,7 @@ const createRangeParams = (id, label) => [
   { key: `val_${id}`, label: `${label} Brightness`, type: "range", min: -1, max: 1, step: 0.01, show_on: { key: "target", value: id } },
 ];
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "selective-color",
   name: "Selective Color",
   icon: "bi-eyedropper",
@@ -98,7 +98,7 @@ export default defineGpuEffect({
     hue_magenta: 0, sat_magenta: 0, val_magenta: 0,
     hue_custom: 0, sat_custom: 0, val_custom: 0,
   },
-  gl: {
+  render: {
     isNeutral(params) {
       for (const key in params) {
         if (key === "target" || key === "customColor") continue;

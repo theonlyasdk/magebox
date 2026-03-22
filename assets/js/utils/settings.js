@@ -18,6 +18,7 @@ const defaults = {
     resizeMethod: "fill",
   },
   undoPanelHeight: null,
+  skipExperimentalTransformWarning: false,
 };
 
 function deepMerge(base, patch) {

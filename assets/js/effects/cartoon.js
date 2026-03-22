@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const CARTOON_FRAGMENT = fragmentShaderSource(
@@ -27,7 +27,7 @@ const CARTOON_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "cartoon",
   name: "Cartoon",
   icon: "bi-magic",
@@ -38,7 +38,7 @@ export default defineGpuEffect({
     { key: "threshold", label: "Edge threshold", type: "range", min: 0, max: 255, step: 1 },
   ],
   defaultParams: { levels: 6, edges: 60, threshold: 50 },
-  gl: {
+  render: {
     passes(params) {
       return [
         pass(CARTOON_FRAGMENT, {

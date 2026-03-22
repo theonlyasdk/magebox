@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const SHARPEN_FRAGMENT = fragmentShaderSource(
@@ -49,7 +49,7 @@ const SHARPEN_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "sharpen",
   name: "Sharpen",
   icon: "bi-triangle",
@@ -70,7 +70,7 @@ export default defineGpuEffect({
     { key: "radius", label: "Radius", type: "range", min: 0.1, max: 5, step: 0.1, unit: "px" },
   ],
   defaultParams: { type: "0", amount: 1.0, radius: 1.0 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amount ?? 0) <= 0;
     },

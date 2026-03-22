@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const getWarpFragment = (mathFunc) => fragmentShaderSource(
@@ -69,7 +69,7 @@ const getWarpFragmentV2 = (mathFunc) => {
   );
 };
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "warp",
   name: "Warp",
   icon: "bi-arrow-repeat",
@@ -106,7 +106,7 @@ export default defineGpuEffect({
     },
   ],
   defaultParams: { amplitude: 30, frequency: 2, axis: "x", function: "sin(t)", customFunc: "sin(t) * e^cos(t * 0.5)" },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amplitude ?? 0) <= 0;
     },

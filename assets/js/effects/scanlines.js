@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const SCANLINES_FRAGMENT = fragmentShaderSource(
@@ -21,7 +21,7 @@ const SCANLINES_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "scanlines",
   name: "Scanlines",
   icon: "bi-list",
@@ -32,7 +32,7 @@ export default defineGpuEffect({
     { key: "turbulence", label: "Turbulence", type: "range", min: 0, max: 1, step: 0.01 },
   ],
   defaultParams: { density: 1.0, opacity: 0.3, turbulence: 0 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.opacity ?? 0) <= 0;
     },

@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const BLUR_FRAGMENT = fragmentShaderSource(
@@ -45,7 +45,7 @@ function gaussianKernel(radius) {
   return weights;
 }
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "blur",
   name: "Blur",
   icon: "bi-droplet",
@@ -54,7 +54,7 @@ export default defineGpuEffect({
     { key: "radius", label: "Radius", type: "range", min: 0, max: 20, step: 0.5, unit: "px" },
   ],
   defaultParams: { radius: 0 },
-  gl: {
+  render: {
     isNeutral(params) {
       const radius = Number(params.radius ?? 0);
       return !Number.isFinite(radius) || radius <= 0;

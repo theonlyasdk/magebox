@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const GRADIENT_MAP_FRAGMENT = fragmentShaderSource(
@@ -24,7 +24,7 @@ const GRADIENT_MAP_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "gradient-map",
   name: "Gradient Map",
   icon: "bi-palette",
@@ -41,7 +41,7 @@ export default defineGpuEffect({
     colorHigh: "#ffffff",
     opacity: 1.0,
   },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.opacity ?? 1) <= 0;
     },

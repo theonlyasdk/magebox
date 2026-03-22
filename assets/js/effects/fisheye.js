@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const FISHEYE_FRAGMENT = fragmentShaderSource(
@@ -25,7 +25,7 @@ const FISHEYE_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "fisheye",
   name: "Fisheye",
   icon: "bi-eye",
@@ -35,7 +35,7 @@ export default defineGpuEffect({
     { key: "radius", label: "Radius", type: "range", min: 10, max: 200, step: 1, unit: "%" },
   ],
   defaultParams: { strength: 0.5, radius: 100 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.strength ?? 0) === 0;
     },

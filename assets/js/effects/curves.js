@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 import { generateSplineLUT } from "../utils/math.js";
 
@@ -26,7 +26,7 @@ const CURVES_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "curves",
   name: "Curves",
   icon: "bi-graph-up",
@@ -67,7 +67,7 @@ export default defineGpuEffect({
     green: [[0, 0], [1, 1]],
     blue: [[0, 0], [1, 1]],
   },
-  gl: {
+  render: {
     isNeutral(params) {
       const isDefault = (points) => {
         if (!points || points.length !== 2) return false;

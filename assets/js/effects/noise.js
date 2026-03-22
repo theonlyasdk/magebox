@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const NOISE_FUNCTIONS = `
@@ -73,7 +73,7 @@ const NOISE_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "noise",
   name: "Noise",
   icon: "bi-reception-4",
@@ -108,7 +108,7 @@ export default defineGpuEffect({
     monochrome: 1, 
     seed: 0 
   },
-  gl: {
+  render: {
     isNeutral(params) {
       const amount = Number(params.amount ?? 0);
       const density = Number(params.density ?? 1.0);

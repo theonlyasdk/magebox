@@ -6,6 +6,7 @@ import cartoon from "./cartoon.js";
 import chromaticAberration from "./chromatic-aberration.js";
 import colorIsolation from "./color-isolation.js";
 import curves from "./curves.js";
+import dropShadow from "./drop-shadow.js";
 import echo from "./echo.js";
 import explode from "./explode.js";
 import filmFade from "./film-fade.js";
@@ -31,6 +32,7 @@ import shadowsHighlights from "./shadows-highlights.js";
 import stretch from "./stretch.js";
 import subjectSeparation from "./subject-separation.js";
 import threshold from "./threshold.js";
+import transform from "./transform.js";
 import vignette from "./vignette.js";
 import warp from "./warp.js";
 
@@ -43,6 +45,7 @@ export const EffectRegistry = [
   chromaticAberration,
   colorIsolation,
   curves,
+  dropShadow,
   echo,
   explode,
   filmFade,
@@ -68,6 +71,7 @@ export const EffectRegistry = [
   stretch,
   subjectSeparation,
   threshold,
+  transform,
   vignette,
   warp,
 ];

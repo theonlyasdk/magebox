@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const LIGHT_FRAGMENT = fragmentShaderSource(
@@ -33,7 +33,7 @@ const LIGHT_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "light-source",
   name: "Light Source",
   icon: "bi-lightbulb",
@@ -50,7 +50,7 @@ export default defineGpuEffect({
       { x: 0.5, y: 0.5, radius: 0.4, intensity: 0.8, color: "#ffffff" }
     ]
   },
-  gl: {
+  render: {
     passes(params) {
       const lights = Array.isArray(params.lights) ? params.lights : [];
       const lightData = new Float32Array(8 * 4);

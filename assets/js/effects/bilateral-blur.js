@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const BILATERAL_FRAGMENT = fragmentShaderSource(
@@ -49,7 +49,7 @@ const BILATERAL_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "bilateral",
   name: "Bilateral Blur",
   icon: "bi-droplet-half",
@@ -59,7 +59,7 @@ export default defineGpuEffect({
     { key: "strength", label: "Edge Sharpness", type: "range", min: 0.01, max: 1, step: 0.01 },
   ],
   defaultParams: { radius: 3, strength: 0.2 },
-  gl: {
+  render: {
     isNeutral(params) {
       const radius = Number(params.radius ?? 0);
       return radius <= 0;

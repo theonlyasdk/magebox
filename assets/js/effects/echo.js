@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const ECHO_FRAGMENT = fragmentShaderSource(
@@ -31,7 +31,7 @@ const ECHO_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "echo",
   name: "Echo",
   icon: "bi-layers",
@@ -43,7 +43,7 @@ export default defineGpuEffect({
     { key: "decay", label: "Decay", type: "range", min: 0.1, max: 1, step: 0.01 },
   ],
   defaultParams: { distance: 20, angle: 0, count: 4, decay: 0.7 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.distance ?? 0) <= 0;
     },

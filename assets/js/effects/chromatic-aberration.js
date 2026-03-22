@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const CHROMATIC_FRAGMENT = fragmentShaderSource(
@@ -34,7 +34,7 @@ const CHROMATIC_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "chromatic-aberration",
   name: "Chromatic Aberration",
   icon: "bi-gpu-card",
@@ -59,7 +59,7 @@ export default defineGpuEffect({
     },
   ],
   defaultParams: { amount: 1.0, angle: 0, radial: true },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amount ?? 0) <= 0;
     },

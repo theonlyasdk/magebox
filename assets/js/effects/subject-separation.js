@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const SUBJECT_HEADER = `
@@ -140,7 +140,7 @@ const SUBJECT_FRAGMENT = fragmentShaderSource(SUBJECT_HEADER, SUBJECT_BODY);
 
 const cachedMaskCanvases = new Map();
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "subject-separation",
   name: "Subject Separation",
   icon: "bi-person-bounding-box",
@@ -294,7 +294,7 @@ export default defineGpuEffect({
     freehandMask: null,
     maskFeather: 5.0
   },
-  gl: {
+  render: {
     passes(params) {
       const regionData = new Float32Array(8 * 4);
       const regionOps = new Int32Array(8);

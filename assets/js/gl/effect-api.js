@@ -1,4 +1,4 @@
-export function defineGpuEffect(config) {
+export function createGpuEffect(config) {
   return {
     ...config,
     engine: "webgl",

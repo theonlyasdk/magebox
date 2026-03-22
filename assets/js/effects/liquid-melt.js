@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const LIQUID_MELT_HEADER = `
@@ -86,7 +86,7 @@ const LIQUID_MELT_BODY = `
 
 const LIQUID_MELT_FRAGMENT = fragmentShaderSource(LIQUID_MELT_HEADER, LIQUID_MELT_BODY);
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "liquid-melt",
   name: "Liquid Melt",
   icon: "bi-droplet-half",
@@ -101,7 +101,7 @@ export default defineGpuEffect({
     { key: "seed", label: "Seed", type: "range", min: 0, max: 100, step: 1 },
   ],
   defaultParams: { amount: 0.35, scale: 22, viscosity: 0.7, gravity: 1.0, turbulence: 0.35, tension: 0.45, seed: 0 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.amount ?? 0) <= 0;
     },

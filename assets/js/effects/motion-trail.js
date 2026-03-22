@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const MOTION_TRAIL_FRAGMENT = fragmentShaderSource(
@@ -48,7 +48,7 @@ const MOTION_TRAIL_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "motion-trail",
   name: "Motion Trail",
   icon: "bi-wind",
@@ -75,7 +75,7 @@ export default defineGpuEffect({
     },
   ],
   defaultParams: { mode: "1", length: 40, angle: 0, samples: 24, decay: 0.8 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.length ?? 0) <= 0;
     },

@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const POSTERIZE_FRAGMENT = fragmentShaderSource(
@@ -13,7 +13,7 @@ const POSTERIZE_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "posterize",
   name: "Posterize",
   icon: "bi-layers-half",
@@ -22,7 +22,7 @@ export default defineGpuEffect({
     { key: "levels", label: "Levels", type: "range", min: 2, max: 255, step: 1 },
   ],
   defaultParams: { levels: 4 },
-  gl: {
+  render: {
     isNeutral(params) {
       return Number(params.levels ?? 4) >= 255;
     },

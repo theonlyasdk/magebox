@@ -1,4 +1,4 @@
-import { defineGpuEffect, pass } from "../gl/effect-api.js";
+import { createGpuEffect, pass } from "../gl/effect-api.js";
 import { fragmentShaderSource } from "../gl/shader-chunks.js";
 
 const ADJUSTMENTS_FRAGMENT = fragmentShaderSource(
@@ -70,7 +70,7 @@ const ADJUSTMENTS_FRAGMENT = fragmentShaderSource(
 `,
 );
 
-export default defineGpuEffect({
+export default createGpuEffect({
   id: "adjustments",
   name: "Adjustments",
   icon: "bi-sliders",
@@ -99,7 +99,7 @@ export default defineGpuEffect({
     gamma: 1,
     invert: 0,
   },
-  gl: {
+  render: {
     isNeutral(params) {
       return (
         Number(params.exposure ?? 0) === 0 &&
