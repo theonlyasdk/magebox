@@ -1222,18 +1222,18 @@ function renderTransformOverlay() {
     return;
   }
 
-  const matrix = composeLayerTransformMatrix(transform.params, canvas.width, canvas.height);
+  const matrix = composeLayerTransformMatrix(transform.params, layer.width, layer.height);
   const corners = [
     transformPoint(matrix, 0, 0),
-    transformPoint(matrix, canvas.width, 0),
-    transformPoint(matrix, canvas.width, canvas.height),
-    transformPoint(matrix, 0, canvas.height),
+    transformPoint(matrix, layer.width, 0),
+    transformPoint(matrix, layer.width, layer.height),
+    transformPoint(matrix, 0, layer.height),
   ];
   const scaleX = canvasRect.width / canvas.width;
   const scaleY = canvasRect.height / canvas.height;
   const toScreen = (point) => ({
-    x: canvasRect.left - areaRect.left + point.x * scaleX,
-    y: canvasRect.top - areaRect.top + point.y * scaleY,
+    x: canvasRect.left - areaRect.left + (point.x + layer.x) * scaleX,
+    y: canvasRect.top - areaRect.top + (point.y + layer.y) * scaleY,
   });
   const screenCorners = corners.map(toScreen);
   const midTop = {
@@ -4669,11 +4669,11 @@ function commitTransform() {
   const layer = getSelectedLayer();
   const transformState = layer?.effects?.transform;
   if (!layer || !transformState?.enabled) return;
-  transformState.enabled = false;
+  // Instead of disabling, we just toggle the tool activity
   deactivateTransformTool();
   renderEffectsList();
   if (state.selectedEffectId === "transform") renderEffectPanel();
-  Undo.push(`Commit Transform on ${layer.name}`);
+  // No need to push Undo for just toggling tool visibility
 }
 
 window.addEventListener("keydown", (e) => {
@@ -4682,6 +4682,11 @@ window.addEventListener("keydown", (e) => {
     if (document.querySelector(".modal.show")) return;
     e.preventDefault();
     commitTransform();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "t") {
+    e.preventDefault();
+    elements.menuToolTransform?.click();
     return;
   }
   if (e.ctrlKey || e.metaKey) {

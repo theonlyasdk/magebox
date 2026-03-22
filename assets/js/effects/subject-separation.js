@@ -303,7 +303,7 @@ export default createGpuEffect({
         if (i < regions.length) {
           const r = regions[i];
           regionData[i * 4 + 0] = r.x;
-          regionData[i * 4 + 1] = r.y;
+          regionData[i * 4 + 1] = 1.0 - r.y;
           regionData[i * 4 + 2] = r.r;
           regionData[i * 4 + 3] = r.s;
           regionOps[i] = r.op;
@@ -360,7 +360,7 @@ export default createGpuEffect({
           u_bokehThreshold: Number(params.bokehThreshold ?? 0.5),
           u_bokehBoost: Number(params.bokehBoost ?? 40.0),
           u_showBorders: Boolean(params.showBorders),
-          u_center: [Number(params.centerX ?? 0.5), Number(params.centerY ?? 0.5)],
+          u_center: [Number(params.centerX ?? 0.5), 1.0 - Number(params.centerY ?? 0.5)],
           u_regions: regionData,
           u_regionOps: regionOps,
           u_maskFeather: Number(params.maskFeather ?? 5.0),

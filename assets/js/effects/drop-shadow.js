@@ -183,7 +183,7 @@ export default createGpuEffect({
       if (opacity <= 0) return [];
       return [
         pass(DROP_SHADOW_FRAGMENT, {
-          u_offset: [Number(params.offsetX ?? 0), Number(params.offsetY ?? 0)],
+          u_offset: [Number(params.offsetX ?? 0), -Number(params.offsetY ?? 0)],
           u_color: hexToRgb(params.color ?? "#000000"),
           u_matteMode: Number(params.matteMode ?? 2),
           u_matteThreshold: Number(params.matteThreshold ?? 0.22),

@@ -518,9 +518,11 @@ export class WebGLRenderer {
       }
     } else {
       const resizePasses = this.#resizePasses(interpolation);
+      // Coordinate transform from Canvas Space (0-1) to Layer Space (0-1)
+      // v_uv = (a_pos + 1)/2 * targetSize/layerSize + (layerY + layerHeight - height) / layerSize
       const firstPassUvTransform = [
         -layerX / layerWidth,
-        -layerY / layerHeight,
+        (layerY + layerHeight - height) / layerHeight,
         width / layerWidth,
         height / layerHeight,
       ];
@@ -544,29 +546,30 @@ export class WebGLRenderer {
         targetIndex = 1 - targetIndex;
       }
     }
-
-    // 3. Apply remaining effects at target resolution
-    if (targetEffects.length > 0) {
-      for (const entry of targetEffects) {
-        const context = { inputSize: currentSize, outputSize: [width, height] };
-        const passes = entry.effect.render.passes(entry.params, context) ?? [];
-        for (const pass of passes) {
-          this.#drawPass(
-            pass.fragmentSource,
-            currentTexture,
-            currentSize,
-            [width, height],
-            pass.uniforms ?? {},
-            canvasPool.framebuffers[targetIndex],
-            pass.filter ?? "linear",
-            pass.luts,
-            entry.effect.id,
-          );
-          currentTexture = canvasPool.textures[targetIndex];
-          targetIndex = 1 - targetIndex;
-        }
-      }
+// 3. Apply remaining effects at target resolution
+if (targetEffects.length > 0) {
+  // Use layer dimensions for effects applied to the layer content
+  const targetContext = { inputSize: [layerWidth, layerHeight], outputSize: [width, height] };
+  for (const entry of targetEffects) {
+    const passes = entry.effect.render.passes(entry.params, targetContext) ?? [];
+    for (const pass of passes) {
+      this.#drawPass(
+        pass.fragmentSource,
+        currentTexture,
+        currentSize,
+        [width, height],
+        pass.uniforms ?? {},
+        canvasPool.framebuffers[targetIndex],
+        pass.filter ?? "linear",
+        pass.luts,
+        entry.effect.id,
+      );
+      currentTexture = canvasPool.textures[targetIndex];
+      currentSize = [width, height];
+      targetIndex = 1 - targetIndex;
     }
+  }
+}
 
     // Final draw to internal canvas (target = null)
     this.#drawPass(COPY_FRAGMENT, currentTexture, currentSize, [width, height], {}, null, "linear");

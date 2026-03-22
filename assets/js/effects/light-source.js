@@ -67,7 +67,7 @@ export default createGpuEffect({
         if (i < lights.length) {
           const l = lights[i];
           lightData[i * 4 + 0] = l.x;
-          lightData[i * 4 + 1] = l.y;
+          lightData[i * 4 + 1] = 1.0 - l.y;
           lightData[i * 4 + 2] = l.radius;
           lightData[i * 4 + 3] = l.intensity;
           
